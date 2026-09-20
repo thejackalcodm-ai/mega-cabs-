@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vehicles | Mega City Cab</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <header class="site-header">
+        <div class="brand">
+            <span class="brand-mark">MCC</span>
+            <h1>Mega City Cab</h1>
+        </div>
+    </header>
+    <main>
+        <div class="card">
+            <a class="back-link" th:href="@{/}">&larr; Home</a>
+            <h2 class="page-title">Vehicles</h2>
+
+            <div class="alert-success" th:if="${successMessage}" th:text="${successMessage}"></div>
+
+            <p><a th:href="@{/vehicles/new}" class="btn-primary">Add vehicle</a></p>
+
+            <table class="data-table" th:if="${!vehicles.isEmpty()}">
+                <thead>
+                <tr>
+                    <th>Registration</th>
+                    <th>Make / model</th>
+                    <th>Type</th>
+                    <th>Seats</th>
+                    <th>Daily rate</th>
+                    <th>Status</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="vehicle : ${vehicles}">
+                    <td th:text="${vehicle.registrationNo}"></td>
+                    <td th:text="${vehicle.make} + ' ' + ${vehicle.model}"></td>
+                    <td th:text="${vehicle.type}"></td>
+                    <td th:text="${vehicle.seatingCapacity}"></td>
+                    <td th:text="${vehicle.dailyRate}"></td>
+                    <td th:text="${vehicle.status}"></td>
+                </tr>
+                </tbody>
+            </table>
+
+            <p class="status-note" th:if="${vehicles.isEmpty()}">No vehicles registered yet.</p>
+        </div>
+    </main>
+</body>
+</html>

@@ -13,11 +13,11 @@ you have actually taken).
 | 3 | Add booking (order no, name, address, phone, destination) | B | pending | pending | done | done | pending | `Booking` entity + `BookingRepository`; `RepositoryPersistenceTest#bookingLinksCustomerVehicleAndDriver` | 7 |
 | 4 | Display booking details | B | pending | pending | done | done | pending | same `Booking` entity/repository as #3 | 7 |
 | 5 | Calculate & print bill (tax/discount) | B | pending | pending | done | done | pending | `Bill` entity + `BillRepository`; `RepositoryPersistenceTest#billCalculatesAndPersistsAgainstBooking` | 7 |
-| 6 | Vehicle management | B | pending | pending | done | done | pending | `Vehicle` entity + `VehicleRepository`; `RepositoryPersistenceTest#vehicleAndDriverManagementPersistIndependently` | 7 |
+| 6 | Vehicle management | B | pending | done | done | done | pending | `VehicleService` (add, list, get-by-id, rejects duplicate registration no) + `VehicleController` (`POST`/`GET /api/vehicles`, `GET /api/vehicles/{id}`) + `VehicleWebController` (`GET /vehicles` list, `GET`/`POST /vehicles/new` form); `VehicleServiceTest` (4), `VehicleControllerTest` (5), `VehicleWebControllerTest` (5) | 7 |
 | 7 | Driver management | B | pending | pending | done | done | pending | `Driver` entity + `DriverRepository`; same test as #6 | 7 |
 | 8 | Help / usage guidance | B | pending | pending | n/a | pending | pending | pending | 7 |
 | 9 | Logout / exit | B | pending | pending | n/a | pending | pending | pending | 7 |
-| 10 | Distributed application / web services | B | pending | in progress | n/a | done | pending | Two real REST endpoints now: `POST /api/auth/login`, `POST /api/customers` — JSON in/out, proper HTTP status codes (200/201/401/400/409) | 6 |
+| 10 | Distributed application / web services | B | pending | in progress | n/a | done | pending | Five real REST endpoints now: `POST /api/auth/login`, `POST /api/customers`, `POST /api/vehicles`, `GET /api/vehicles`, `GET /api/vehicles/{id}` — JSON in/out, proper HTTP status codes (200/201/400/401/404/409) | 6 |
 | 11 | Design patterns | B | pending | in progress | n/a | n/a | pending | Repository pattern applied throughout (6 Spring Data JPA interfaces); Service layer separates business logic from controllers (`AuthService`, `CustomerService`). No named GoF pattern (Strategy/Factory) applied yet — planned for bill tax/discount calculation | 6 |
 | 12 | Proper database | B | pending | done | done | done | pending | 6 JPA entities (`User`, `Customer`, `Vehicle`, `Driver`, `Booking`, `Bill`) with FK relationships, H2-backed, verified by `RepositoryPersistenceTest` (4/4 tests passing) | 6 |
 | 13 | Use Case diagram | A | pending | n/a | n/a | n/a | pending | pending | 5 |
@@ -47,11 +47,11 @@ pulled in, so no other endpoint is affected). `AuthController` exposes
 `POST /api/auth/login`, returning the username/role on success, 401 on
 bad credentials, and 400 with field-level messages on invalid input.
 
-**Milestone 4 (this commit):** Customer registration (requirement 2) —
-both a REST API (`POST /api/customers`) and, for the first time, a real
-UI a human can click through: a Thymeleaf form at `GET /register`,
-linked from the home page, posting to `POST /register` and redirecting
-to a confirmation page showing the generated registration number.
+**Milestone 4:** Customer registration (requirement 2) — both a REST
+API (`POST /api/customers`) and, for the first time, a real UI a human
+can click through: a Thymeleaf form at `GET /register`, linked from
+the home page, posting to `POST /register` and redirecting to a
+confirmation page showing the generated registration number.
 `CustomerService` generates the registration number
 (`REG-<8-char UUID slice>`, chosen over a sequential counter to avoid
 races under concurrent registration), hashes the password, and rejects
@@ -62,6 +62,22 @@ formats (9 digits + V/X, or 12 digits). Everything below was exercised
 against a live running instance, not just unit/slice tests: form
 submission → success page, duplicate NIC → inline error (no crash),
 REST registration, and logging in as the newly created customer via
-`POST /api/auth/login`, including a wrong-password 401. Status will
-change to "done" per-row only once that specific requirement has real
-code, a passing test, and a commit hash to point to.
+`POST /api/auth/login`, including a wrong-password 401.
+
+**Milestone 5 (this commit):** Vehicle management (requirement 6) —
+`VehicleService` adds vehicles (defaulting to `AVAILABLE` status),
+lists them, fetches one by id, and rejects a duplicate registration
+number with a 409/inline error rather than a raw database error
+(`DuplicateResourceException`, `ResourceNotFoundException` — new,
+reusable across future resources rather than customer-specific).
+Exposed as both a REST API (`POST`/`GET /api/vehicles`,
+`GET /api/vehicles/{id}`) and a real admin UI (`GET /vehicles` list
+table, `GET`/`POST /vehicles/new` form), linked from the home page.
+The shared stylesheet gained `.data-table` and `.alert-success`
+styles to support it. Verified against a live running instance: REST
+add/list/get/duplicate/missing-id all exercised with curl; the UI
+form and list pages driven with a real headless browser, screenshots
+taken, confirming a vehicle added via curl and one added via the
+browser both appear correctly in the same table. Status will change
+to "done" per-row only once that specific requirement has real code,
+a passing test, and a commit hash to point to.
