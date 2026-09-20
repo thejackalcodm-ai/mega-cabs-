@@ -5,8 +5,9 @@ University, School of Technologies). Implements a computerised booking and
 billing system for the "Mega City Cab" scenario (Colombo), replacing the
 manual booking process described in the assessment brief.
 
-> Status: **project foundation only**. This README is updated at every
-> milestone to reflect what is genuinely implemented — see the
+> Status: **project foundation + JPA domain model (database layer)**. No
+> UI, REST API, or business logic exists yet. This README is updated at
+> every milestone to reflect what is genuinely implemented — see the
 > [traceability matrix](docs/traceability-matrix.md) for the authoritative,
 > commit-by-commit status of each assignment requirement.
 
@@ -51,7 +52,37 @@ mvn clean install
 mvn spring-boot:run
 ```
 
-The application starts on `http://localhost:8080`.
+The application starts on `http://localhost:8080`. Run `mvn test` to run
+the automated test suite (5 tests: context load + 4 repository persistence
+tests) against an embedded H2 database.
+
+### Running on your local network
+
+The app binds to all interfaces by default (no `server.address` override),
+so once it's running, any device on the same network can reach it at
+`http://<your-machine's-LAN-IP>:8080` — no extra configuration needed.
+
+### Public demo access
+
+A permanently-hosted public deployment (Render, Koyeb, etc.) was attempted
+for Task D but blocked by each provider's current free-tier requirements
+(a card for verification, or no free instance type offered at all) — see
+the traceability matrix and the project report for the specific blockers
+hit. Until a genuinely free host is found or the small monthly cost is
+accepted, the app is demonstrated live via an HTTPS tunnel to a locally
+running instance rather than a permanent URL:
+
+```bash
+mvn spring-boot:run &
+cloudflared tunnel --url http://localhost:8080
+```
+
+This prints a temporary public `https://*.trycloudflare.com` URL that
+forwards to the local instance for as long as both processes are running —
+suitable for a live demo or a time-boxed marker review, not a permanent
+deployment. A `Dockerfile` and `render.yaml` are already committed and
+ready to use the moment a suitable host is chosen; only a
+`Create Service → connect this repo` step remains on that provider's side.
 
 ## Configuration
 
