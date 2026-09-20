@@ -2,17 +2,29 @@
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Mega City Cab | Online Vehicle Reservation System</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <h1>Mega City Cab</h1>
-    <h2>Online Vehicle Reservation System</h2>
-    <p>Project foundation is running. Functional modules (bookings,
-       vehicle &amp; driver management, billing, reports) are added
-       incrementally - see the repository README and traceability matrix
-       for current status.</p>
-    <ul>
-        <li><a th:href="@{/register}">Register as a new customer</a></li>
-    </ul>
+    <header class="site-header">
+        <div class="brand">
+            <span class="brand-mark">MCC</span>
+            <h1>Mega City Cab</h1>
+        </div>
+    </header>
+    <main>
+        <div class="card">
+            <h2 class="page-title">Online Vehicle Reservation System</h2>
+            <p class="status-note">
+                Functional modules (bookings, vehicle &amp; driver management,
+                billing, reports) are added incrementally &mdash; see the
+                repository README and traceability matrix for current status.
+            </p>
+            <ul class="menu-list">
+                <li><a th:href="@{/register}">Register as a new customer</a></li>
+            </ul>
+        </div>
+    </main>
 </body>
 </html>

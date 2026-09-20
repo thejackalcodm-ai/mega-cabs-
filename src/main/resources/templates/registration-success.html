@@ -2,18 +2,28 @@
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Registered | Mega City Cab</title>
-    <style>
-        body { font-family: sans-serif; max-width: 480px; margin: 2rem auto; padding: 0 1rem; }
-        .registration-no { font-size: 1.4rem; font-weight: bold; }
-    </style>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <p><a th:href="@{/}">&larr; Home</a></p>
-    <h1>Registration successful</h1>
-    <p th:text="'Welcome, ' + ${name} + '.'"></p>
-    <p>Your customer registration number is:</p>
-    <p class="registration-no" th:text="${registrationNo}"></p>
-    <p>Keep this for your records — you'll need it to make and look up bookings.</p>
+    <header class="site-header">
+        <div class="brand">
+            <span class="brand-mark">MCC</span>
+            <h1>Mega City Cab</h1>
+        </div>
+    </header>
+    <main>
+        <div class="card">
+            <a class="back-link" th:href="@{/}">&larr; Home</a>
+            <h2 class="page-title">Registration successful</h2>
+            <p th:text="'Welcome, ' + ${name} + '.'"></p>
+            <p class="status-note">Your customer registration number is:</p>
+            <div class="registration-no-box">
+                <div class="value" th:text="${registrationNo}"></div>
+            </div>
+            <p class="status-note">Keep this for your records &mdash; you'll need it to make and look up bookings.</p>
+        </div>
+    </main>
 </body>
 </html>
