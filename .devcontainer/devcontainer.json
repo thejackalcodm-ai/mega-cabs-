@@ -1,0 +1,27 @@
+{
+    "name": "Mega City Cab (Java 21 + Maven)",
+    "image": "mcr.microsoft.com/devcontainers/java:1-21-bullseye",
+    "features": {
+        "ghcr.io/devcontainers/features/java:1": {
+            "version": "none",
+            "installMaven": "true",
+            "mavenVersion": "3.9.9"
+        }
+    },
+    "forwardPorts": [8080],
+    "portsAttributes": {
+        "8080": {
+            "label": "Mega City Cab (Spring Boot)",
+            "onAutoForward": "notify"
+        }
+    },
+    "postCreateCommand": "mvn -B clean compile",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "vscjava.vscode-java-pack",
+                "vmware.vscode-spring-boot"
+            ]
+        }
+    }
+}
