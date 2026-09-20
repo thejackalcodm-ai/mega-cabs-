@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: mega-city-cab
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: SPRING_DATASOURCE_URL
+        value: jdbc:h2:file:./data/megacitycab;AUTO_SERVER=TRUE
