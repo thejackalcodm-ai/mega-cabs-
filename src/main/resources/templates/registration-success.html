@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Registered | Mega City Cab</title>
+    <style>
+        body { font-family: sans-serif; max-width: 480px; margin: 2rem auto; padding: 0 1rem; }
+        .registration-no { font-size: 1.4rem; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <p><a th:href="@{/}">&larr; Home</a></p>
+    <h1>Registration successful</h1>
+    <p th:text="'Welcome, ' + ${name} + '.'"></p>
+    <p>Your customer registration number is:</p>
+    <p class="registration-no" th:text="${registrationNo}"></p>
+    <p>Keep this for your records — you'll need it to make and look up bookings.</p>
+</body>
+</html>

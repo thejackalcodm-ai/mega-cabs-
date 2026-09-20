@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Register | Mega City Cab</title>
+    <style>
+        body { font-family: sans-serif; max-width: 480px; margin: 2rem auto; padding: 0 1rem; }
+        label { display: block; margin-top: 1rem; font-weight: bold; }
+        input { width: 100%; padding: 0.4rem; margin-top: 0.25rem; box-sizing: border-box; }
+        .error { color: #b00020; font-size: 0.9rem; margin-top: 0.25rem; }
+        .form-error { color: #b00020; border: 1px solid #b00020; padding: 0.75rem; margin-top: 1rem; }
+        button { margin-top: 1.5rem; padding: 0.6rem 1.2rem; }
+    </style>
+</head>
+<body>
+    <p><a th:href="@{/}">&larr; Home</a></p>
+    <h1>Customer Registration</h1>
+
+    <div class="form-error" th:if="${errorMessage}" th:text="${errorMessage}"></div>
+
+    <form th:action="@{/register}" th:object="${customerRegistrationRequest}" method="post">
+        <label for="name">Full name</label>
+        <input type="text" id="name" th:field="*{name}"/>
+        <div class="error" th:if="${#fields.hasErrors('name')}" th:errors="*{name}"></div>
+
+        <label for="address">Address</label>
+        <input type="text" id="address" th:field="*{address}"/>
+        <div class="error" th:if="${#fields.hasErrors('address')}" th:errors="*{address}"></div>
+
+        <label for="nic">NIC</label>
+        <input type="text" id="nic" th:field="*{nic}" placeholder="e.g. 982761234V"/>
+        <div class="error" th:if="${#fields.hasErrors('nic')}" th:errors="*{nic}"></div>
+
+        <label for="username">Username</label>
+        <input type="text" id="username" th:field="*{username}"/>
+        <div class="error" th:if="${#fields.hasErrors('username')}" th:errors="*{username}"></div>
+
+        <label for="password">Password</label>
+        <input type="password" id="password" th:field="*{password}"/>
+        <div class="error" th:if="${#fields.hasErrors('password')}" th:errors="*{password}"></div>
+
+        <button type="submit">Register</button>
+    </form>
+</body>
+</html>
