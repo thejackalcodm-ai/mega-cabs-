@@ -111,6 +111,23 @@ header.site-header {
     font-weight: 700;
 }
 
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.9rem;
+}
+
+.nav-username {
+    color: #fff;
+    font-weight: 600;
+}
+
+.nav-user a {
+    padding: 0.35rem 0.7rem;
+}
+
 /* ---------- Layout ---------- */
 
 main {

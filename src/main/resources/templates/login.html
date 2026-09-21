@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <div th:replace="~{fragments/nav :: header('login')}"></div>
+    <main>
+        <div class="card">
+            <a class="back-link" th:href="@{/}">&larr; Home</a>
+            <h2 class="page-title">Login</h2>
+            <p class="page-lead">Use the username and password you registered with.</p>
+
+            <div class="alert-error" th:if="${errorMessage}" th:text="${errorMessage}"></div>
+
+            <form th:action="@{/login}" th:object="${loginRequest}" method="post" novalidate="novalidate">
+                <div class="field" th:classappend="${#fields.hasErrors('username')} ? 'has-error'">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" th:field="*{username}" placeholder="Your username" autocomplete="username"/>
+                    <div class="field-error" th:if="${#fields.hasErrors('username')}" th:errors="*{username}"></div>
+                </div>
+
+                <div class="field" th:classappend="${#fields.hasErrors('password')} ? 'has-error'">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" th:field="*{password}" placeholder="Your password" autocomplete="current-password"/>
+                    <div class="field-error" th:if="${#fields.hasErrors('password')}" th:errors="*{password}"></div>
+                </div>
+
+                <button type="submit" class="btn-primary">Login</button>
+            </form>
+
+            <p class="status-note">Don't have an account yet? <a th:href="@{/register}">Register as a customer</a>.</p>
+        </div>
+    </main>
+</body>
+</html>

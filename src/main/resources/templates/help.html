@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Help | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <div th:replace="~{fragments/nav :: header('help')}"></div>
+    <main>
+        <div class="card">
+            <a class="back-link" th:href="@{/}">&larr; Home</a>
+            <h2 class="page-title">Help &amp; usage guide</h2>
+            <p class="page-lead">A quick walkthrough of everything Mega City Cab can do.</p>
+
+            <h3>1. Register as a customer</h3>
+            <p class="status-note">
+                Go to <a th:href="@{/register}">Register</a> and fill in your name, address, NIC,
+                and a username/password. On success you'll be given a registration number
+                (e.g. <code>REG-A1B2C3D4</code>) &mdash; keep it, you'll need it to make a booking.
+            </p>
+
+            <h3>2. Login</h3>
+            <p class="status-note">
+                Once registered, use <a th:href="@{/login}">Login</a> with the username and
+                password you chose. Logged-in status is shown in the navigation bar; use
+                <strong>Logout</strong> there to end your session.
+            </p>
+
+            <h3>3. Book a cab</h3>
+            <p class="status-note">
+                Go to <a th:href="@{/book}">Book a cab</a> and enter your registration number,
+                passenger details, destination, and pick an available vehicle. Submitting
+                creates a booking with a generated order number (e.g. <code>ORD-9F3B2C1A</code>)
+                and reserves that vehicle so no one else can book it at the same time.
+            </p>
+
+            <h3>4. View a booking &amp; calculate the bill</h3>
+            <p class="status-note">
+                Find your booking under <a th:href="@{/bookings}">Bookings</a> and open it to see
+                its details. From there, choose <strong>Calculate bill</strong>, enter any
+                discount, and a bill is generated with a 10% tax applied on top of the vehicle's
+                daily rate. The bill page has a <strong>Print bill</strong> button for a
+                print-friendly copy.
+            </p>
+
+            <h3>5. Manage vehicles &amp; drivers</h3>
+            <p class="status-note">
+                Staff can add and view the fleet under <a th:href="@{/vehicles}">Vehicles</a> and
+                <a th:href="@{/drivers}">Drivers</a>. A vehicle's status (Available / Booked)
+                updates automatically as bookings are made.
+            </p>
+
+            <h3>Troubleshooting</h3>
+            <p class="status-note">
+                Every form shows an inline error message if something's wrong (e.g. a duplicate
+                NIC, an unavailable vehicle, or a booking that's already been billed) &mdash;
+                correct the highlighted field and resubmit.
+            </p>
+        </div>
+    </main>
+</body>
+</html>
