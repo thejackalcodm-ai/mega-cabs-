@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bookings | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <div th:replace="~{fragments/nav :: header('bookings')}"></div>
+    <main class="wide">
+        <div class="card">
+            <a class="back-link" th:href="@{/}">&larr; Home</a>
+            <h2 class="page-title">Bookings</h2>
+            <p class="page-lead">All cab bookings on record.</p>
+
+            <p><a th:href="@{/book}" class="btn-primary btn-auto">+ New booking</a></p>
+
+            <table class="data-table" th:if="${!bookings.isEmpty()}">
+                <thead>
+                <tr>
+                    <th>Order no.</th>
+                    <th>Customer</th>
+                    <th>Destination</th>
+                    <th>Vehicle</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="booking : ${bookings}">
+                    <td><a th:href="@{/bookings/{id}(id=${booking.id})}" th:text="${booking.orderNo}"></a></td>
+                    <td th:text="${booking.name}"></td>
+                    <td th:text="${booking.destination}"></td>
+                    <td th:text="${booking.vehicle.registrationNo}"></td>
+                    <td th:text="${booking.bookingDate}"></td>
+                    <td><span class="badge" th:text="${booking.status}"></span></td>
+                </tr>
+                </tbody>
+            </table>
+
+            <div class="empty-state" th:if="${bookings.isEmpty()}">
+                <p>No bookings yet.</p>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

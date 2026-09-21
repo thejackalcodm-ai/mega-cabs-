@@ -400,3 +400,18 @@ p.page-lead {
     padding: 2.5rem 1rem;
     color: var(--color-text-muted);
 }
+
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    body {
+        background: #fff;
+    }
+
+    .card {
+        border: none;
+        box-shadow: none;
+    }
+}

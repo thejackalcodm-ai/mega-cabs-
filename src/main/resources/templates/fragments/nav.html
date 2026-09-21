@@ -9,6 +9,7 @@
         </a>
         <ul class="site-nav">
             <li><a th:href="@{/register}" th:classappend="${active == 'register'} ? 'active'">Register</a></li>
+            <li><a th:href="@{/bookings}" th:classappend="${active == 'bookings'} ? 'active'">Bookings</a></li>
             <li><a th:href="@{/vehicles}" th:classappend="${active == 'vehicles'} ? 'active'">Vehicles</a></li>
             <li><a th:href="@{/drivers}" th:classappend="${active == 'drivers'} ? 'active'">Drivers</a></li>
         </ul>

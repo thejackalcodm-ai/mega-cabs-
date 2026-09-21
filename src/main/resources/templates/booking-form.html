@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>New Booking | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <div th:replace="~{fragments/nav :: header('bookings')}"></div>
+    <main>
+        <div class="card">
+            <a class="back-link" th:href="@{/bookings}">&larr; Bookings</a>
+            <h2 class="page-title">New Booking</h2>
+            <p class="page-lead">Book a cab for a registered customer.</p>
+
+            <div class="alert-error" th:if="${errorMessage}" th:text="${errorMessage}"></div>
+
+            <form th:action="@{/book}" th:object="${bookingRequest}" method="post" novalidate="novalidate">
+                <div class="field" th:classappend="${#fields.hasErrors('customerRegistrationNo')} ? 'has-error'">
+                    <label for="customerRegistrationNo">Customer registration number</label>
+                    <input type="text" id="customerRegistrationNo" th:field="*{customerRegistrationNo}" placeholder="e.g. REG-A1B2C3D4"/>
+                    <div class="field-hint" th:unless="${#fields.hasErrors('customerRegistrationNo')}">
+                        The number the customer was given when they registered.
+                    </div>
+                    <div class="field-error" th:if="${#fields.hasErrors('customerRegistrationNo')}" th:errors="*{customerRegistrationNo}"></div>
+                </div>
+
+                <div class="field" th:classappend="${#fields.hasErrors('name')} ? 'has-error'">
+                    <label for="name">Passenger name</label>
+                    <input type="text" id="name" th:field="*{name}" placeholder="e.g. Nimal Perera"/>
+                    <div class="field-error" th:if="${#fields.hasErrors('name')}" th:errors="*{name}"></div>
+                </div>
+
+                <div class="field" th:classappend="${#fields.hasErrors('address')} ? 'has-error'">
+                    <label for="address">Pickup address</label>
+                    <input type="text" id="address" th:field="*{address}" placeholder="e.g. 12 Galle Road, Colombo"/>
+                    <div class="field-error" th:if="${#fields.hasErrors('address')}" th:errors="*{address}"></div>
+                </div>
+
+                <div class="field" th:classappend="${#fields.hasErrors('phone')} ? 'has-error'">
+                    <label for="phone">Phone number</label>
+                    <input type="text" id="phone" th:field="*{phone}" placeholder="e.g. 0771234567"/>
+                    <div class="field-error" th:if="${#fields.hasErrors('phone')}" th:errors="*{phone}"></div>
+                </div>
+
+                <div class="field" th:classappend="${#fields.hasErrors('destination')} ? 'has-error'">
+                    <label for="destination">Destination</label>
+                    <input type="text" id="destination" th:field="*{destination}" placeholder="e.g. Bandaranaike International Airport"/>
+                    <div class="field-error" th:if="${#fields.hasErrors('destination')}" th:errors="*{destination}"></div>
+                </div>
+
+                <div class="field" th:classappend="${#fields.hasErrors('vehicleId')} ? 'has-error'">
+                    <label for="vehicleId">Vehicle</label>
+                    <select id="vehicleId" th:field="*{vehicleId}">
+                        <option value="">Select an available vehicle&hellip;</option>
+                        <option th:each="v : ${availableVehicles}" th:value="${v.id}"
+                                th:text="${v.registrationNo} + ' — ' + ${v.make} + ' ' + ${v.model} + ' (' + ${v.dailyRate} + '/day)'"></option>
+                    </select>
+                    <div class="field-hint" th:if="${availableVehicles.isEmpty()}">
+                        No vehicles are currently available &mdash; add one or wait for one to free up.
+                    </div>
+                    <div class="field-error" th:if="${#fields.hasErrors('vehicleId')}" th:errors="*{vehicleId}"></div>
+                </div>
+
+                <button type="submit" class="btn-primary">Create booking</button>
+            </form>
+        </div>
+    </main>
+</body>
+</html>

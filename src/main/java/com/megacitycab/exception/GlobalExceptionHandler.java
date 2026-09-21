@@ -38,6 +38,12 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse(ex.getMessage(), List.of()));
     }
 
+    @ExceptionHandler(InvalidBookingException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidBooking(InvalidBookingException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ex.getMessage(), List.of()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
         List<String> details = ex.getBindingResult().getFieldErrors().stream()

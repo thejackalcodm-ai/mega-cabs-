@@ -10,9 +10,9 @@ you have actually taken).
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | Login (username/password) | B | pending | done | done | done | pending | `AuthService` (BCrypt via `spring-security-crypto`) + `AuthController` (`POST /api/auth/login`); `AuthServiceTest` (3), `AuthControllerTest` (3) | 7 |
 | 2 | Customer registration (reg no, name, address, NIC) | B | pending | done | done | done | pending | `CustomerService` (generates reg no, hashes password, rejects duplicate username/NIC) + `CustomerController` (`POST /api/customers`, JSON) + `RegistrationController` (`GET`/`POST /register`, Thymeleaf form + success page); `CustomerServiceTest` (3), `CustomerControllerTest` (3), `RegistrationControllerTest` (4) | 7 |
-| 3 | Add booking (order no, name, address, phone, destination) | B | pending | pending | done | done | pending | `Booking` entity + `BookingRepository`; `RepositoryPersistenceTest#bookingLinksCustomerVehicleAndDriver` | 7 |
-| 4 | Display booking details | B | pending | pending | done | done | pending | same `Booking` entity/repository as #3 | 7 |
-| 5 | Calculate & print bill (tax/discount) | B | pending | pending | done | done | pending | `Bill` entity + `BillRepository`; `RepositoryPersistenceTest#billCalculatesAndPersistsAgainstBooking` | 7 |
+| 3 | Add booking (order no, name, address, phone, destination) | B | pending | done | done | done | pending | `BookingService.createBooking` (generates `ORD-` order no, validates customer/vehicle exist, rejects unavailable vehicle, marks vehicle `BOOKED`) + `BookingController` (`POST /api/bookings`) + `BookingWebController` (`GET`/`POST /book` form); `BookingServiceTest` (4), `BookingControllerTest` (5), `BookingWebControllerTest` (6) | 7 |
+| 4 | Display booking details | B | pending | done | done | done | pending | `BookingController` (`GET /api/bookings`, `GET /api/bookings/{id}`) + `BookingWebController` (`GET /bookings` list, `GET /bookings/{id}` detail) | 7 |
+| 5 | Calculate & print bill (tax/discount) | B | pending | done | done | done | pending | `BillService.generateBill` (10% flat tax, discount deducted, rejects a second bill for the same booking, rejects a discount larger than subtotal+tax) + `BillController` (`POST`/`GET /api/bookings/{id}/bill`) + `BillWebController` (`GET`/`POST /bookings/{id}/bill/new`, `GET /bookings/{id}/bill` printable view); `BillServiceTest` (4), `BillControllerTest` (4), `BillWebControllerTest` (4) | 7 |
 | 6 | Vehicle management | B | pending | done | done | done | pending | `VehicleService` (add, list, get-by-id, rejects duplicate registration no) + `VehicleController` (`POST`/`GET /api/vehicles`, `GET /api/vehicles/{id}`) + `VehicleWebController` (`GET /vehicles` list, `GET`/`POST /vehicles/new` form); `VehicleServiceTest` (4), `VehicleControllerTest` (5), `VehicleWebControllerTest` (5) | 7 |
 | 7 | Driver management | B | pending | done | done | done | pending | `DriverService` (add, list, get-by-id, rejects duplicate license no) + `DriverController` (`POST`/`GET /api/drivers`, `GET /api/drivers/{id}`) + `DriverWebController` (`GET /drivers` list, `GET`/`POST /drivers/new` form); `DriverServiceTest` (4), `DriverControllerTest` (5), `DriverWebControllerTest` (5) | 7 |
 | 8 | Help / usage guidance | B | pending | pending | n/a | pending | pending | pending | 7 |
@@ -96,3 +96,55 @@ a mobile-viewport pass (no horizontal scroll) — all against a freshly
 rebuilt jar, not a stale process. Status will change to "done"
 per-row only once that specific requirement has real code, a passing
 test, and a commit hash to point to.
+
+**Milestone 7 (this commit):** Booking and billing (requirements 3,
+4, 5) — built to the scope explicitly agreed with the user ("Match the
+assignment brief closely"): a customer books a specific available
+vehicle, staff can then calculate and print a bill for that booking.
+No live ride-matching, driver self-registration, or earnings dashboard
+— that is a different, out-of-scope application the user considered
+and explicitly declined in favour of the brief.
+
+`BookingService.createBooking` looks up the customer by registration
+number and the vehicle by id, rejects either if not found
+(`ResourceNotFoundException`), rejects the booking outright if the
+vehicle is not currently `AVAILABLE` (new `InvalidBookingException`,
+mapped to HTTP 409), and — on success — generates an `ORD-<8-char
+UUID slice>` order number and flips the vehicle to `BOOKED` in the
+same transaction, so a second customer can never double-book it.
+`BillService.generateBill` computes a flat 10% tax on the vehicle's
+daily rate, subtracts the requested discount, rejects a second bill
+against an already-billed booking (`DuplicateResourceException` → 409)
+and rejects a discount that would take the total below zero. Both are
+exposed as a REST API (`POST`/`GET /api/bookings`,
+`POST`/`GET /api/bookings/{id}/bill`) and a Thymeleaf UI (`/book`,
+`/bookings`, `/bookings/{id}`, `/bookings/{id}/bill/new`,
+`/bookings/{id}/bill` with a print-friendly stylesheet), linked from
+the home page and the shared nav.
+
+A template bug was caught during this milestone's own test run before
+anything was committed: `bill-view.html` initially referenced
+`${bill.orderNo}`, but the model attribute is the raw `Bill` entity,
+which has no such property (only `Bill.getBooking().getOrderNo()`
+does) — this failed one `BillWebControllerTest` with a genuine
+Thymeleaf `SpelEvaluationException` on a clean `mvn test` run. Fixed
+to `${bill.booking.orderNo}`; the full suite (77 tests) then passed
+with 0 failures/0 errors.
+
+Verified against a freshly packaged jar (not a stale process) with an
+end-to-end scripted headless-browser walkthrough covering: registering
+a fresh customer and vehicle, confirming the new vehicle appears in
+the booking form's available-vehicle dropdown, submitting a booking
+and landing on its detail page, confirming that same vehicle
+immediately disappears from the available list on a second visit to
+`/book`, generating a bill with a discount and confirming the
+rendered order number/subtotal/tax/total, confirming a second bill
+attempt on the same booking is rejected with a clear inline error
+(not a stack trace), and confirming a booking against an unknown
+customer registration number fails cleanly. All 16 scripted checks
+passed with zero browser console errors. Independently of the app
+layer, the resulting H2 database was queried directly
+(`org.h2.tools.Shell`) and confirmed: vehicle status `BOOKED`, booking
+status `PENDING`, and the bill row showing subtotal `45.00`, tax
+`4.50` (10% of 45.00), discount `5.00`, total `44.50` — the arithmetic
+is correct in the persisted data, not just on screen.
