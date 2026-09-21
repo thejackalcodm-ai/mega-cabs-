@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Calculate Bill | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <div th:replace="~{fragments/nav :: header('bookings')}"></div>
+    <main>
+        <div class="card">
+            <a class="back-link" th:href="@{/bookings/{id}(id=${booking.id})}">&larr; Booking</a>
+            <h2 class="page-title" th:text="'Calculate Bill — ' + ${booking.orderNo}"></h2>
+            <p class="page-lead" th:text="'Vehicle daily rate: ' + ${booking.vehicle.dailyRate} + ' · Tax: 10%'"></p>
+
+            <div class="alert-error" th:if="${errorMessage}" th:text="${errorMessage}"></div>
+
+            <form th:action="@{/bookings/{id}/bill(id=${booking.id})}" th:object="${billRequest}" method="post" novalidate="novalidate">
+                <div class="field" th:classappend="${#fields.hasErrors('discountAmount')} ? 'has-error'">
+                    <label for="discountAmount">Discount amount</label>
+                    <input type="number" id="discountAmount" th:field="*{discountAmount}" step="0.01" min="0"/>
+                    <div class="field-hint" th:unless="${#fields.hasErrors('discountAmount')}">
+                        Enter 0 if no discount applies.
+                    </div>
+                    <div class="field-error" th:if="${#fields.hasErrors('discountAmount')}" th:errors="*{discountAmount}"></div>
+                </div>
+
+                <button type="submit" class="btn-primary">Generate bill</button>
+            </form>
+        </div>
+    </main>
+</body>
+</html>

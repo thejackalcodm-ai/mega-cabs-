@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Booking Details | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <div th:replace="~{fragments/nav :: header('bookings')}"></div>
+    <main>
+        <div class="card">
+            <a class="back-link" th:href="@{/bookings}">&larr; Bookings</a>
+            <h2 class="page-title" th:text="'Booking ' + ${booking.orderNo}"></h2>
+            <p class="page-lead"><span class="badge" th:text="${booking.status}"></span></p>
+
+            <table class="data-table">
+                <tbody>
+                <tr><th>Passenger</th><td th:text="${booking.name}"></td></tr>
+                <tr><th>Pickup address</th><td th:text="${booking.address}"></td></tr>
+                <tr><th>Phone</th><td th:text="${booking.phone}"></td></tr>
+                <tr><th>Destination</th><td th:text="${booking.destination}"></td></tr>
+                <tr><th>Vehicle</th><td th:text="${booking.vehicle.registrationNo} + ' — ' + ${booking.vehicle.make} + ' ' + ${booking.vehicle.model}"></td></tr>
+                <tr><th>Date</th><td th:text="${booking.bookingDate}"></td></tr>
+                <tr><th>Customer reg. no.</th><td th:text="${booking.customer.registrationNo}"></td></tr>
+                </tbody>
+            </table>
+
+            <p style="margin-top: 1.5rem;">
+                <a th:if="${hasBill}" th:href="@{/bookings/{id}/bill(id=${booking.id})}" class="btn-primary btn-auto">View bill</a>
+                <a th:unless="${hasBill}" th:href="@{/bookings/{id}/bill/new(id=${booking.id})}" class="btn-primary btn-auto">Calculate bill</a>
+            </p>
+        </div>
+    </main>
+</body>
+</html>

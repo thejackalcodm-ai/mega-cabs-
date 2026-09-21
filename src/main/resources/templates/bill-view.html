@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bill | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <div class="no-print" th:replace="~{fragments/nav :: header('bookings')}"></div>
+    <main>
+        <div class="card">
+            <a class="back-link no-print" th:href="@{/bookings/{id}(id=${booking.id})}">&larr; Booking</a>
+            <h2 class="page-title">Mega City Cab &mdash; Bill</h2>
+            <p class="page-lead" th:text="'Order ' + ${bill.booking.orderNo} + ' · ' + ${bill.issuedDate}"></p>
+
+            <table class="data-table">
+                <tbody>
+                <tr><th>Passenger</th><td th:text="${booking.name}"></td></tr>
+                <tr><th>Destination</th><td th:text="${booking.destination}"></td></tr>
+                <tr><th>Vehicle</th><td th:text="${booking.vehicle.registrationNo}"></td></tr>
+                <tr><th>Subtotal</th><td th:text="${bill.subtotal}"></td></tr>
+                <tr><th>Tax (10%)</th><td th:text="${bill.taxAmount}"></td></tr>
+                <tr><th>Discount</th><td th:text="'-' + ${bill.discountAmount}"></td></tr>
+                </tbody>
+            </table>
+
+            <div class="registration-no-box">
+                <div class="status-note">Total amount</div>
+                <div class="value" th:text="${bill.totalAmount}"></div>
+            </div>
+
+            <p class="no-print"><button type="button" class="btn-secondary" onclick="window.print()">Print bill</button></p>
+        </div>
+    </main>
+</body>
+</html>
