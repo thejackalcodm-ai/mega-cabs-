@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<header class="site-header" th:fragment="header(active)">
+    <div class="header-inner">
+        <a class="brand" th:href="@{/}">
+            <span class="brand-mark">MCC</span>
+            <span class="brand-name">Mega City Cab</span>
+        </a>
+        <ul class="site-nav">
+            <li><a th:href="@{/register}" th:classappend="${active == 'register'} ? 'active'">Register</a></li>
+            <li><a th:href="@{/vehicles}" th:classappend="${active == 'vehicles'} ? 'active'">Vehicles</a></li>
+            <li><a th:href="@{/drivers}" th:classappend="${active == 'drivers'} ? 'active'">Drivers</a></li>
+        </ul>
+    </div>
+</header>
+</body>
+</html>

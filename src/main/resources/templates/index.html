@@ -4,26 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Mega City Cab | Online Vehicle Reservation System</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
     <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <header class="site-header">
-        <div class="brand">
-            <span class="brand-mark">MCC</span>
-            <h1>Mega City Cab</h1>
-        </div>
-    </header>
-    <main>
+    <div th:replace="~{fragments/nav :: header('home')}"></div>
+    <main class="wide">
         <div class="card">
             <h2 class="page-title">Online Vehicle Reservation System</h2>
-            <p class="status-note">
-                Functional modules (bookings, driver management, billing,
-                reports) are added incrementally &mdash; see the repository
-                README and traceability matrix for current status.
+            <p class="page-lead">
+                Functional modules (bookings, billing, reports) are added
+                incrementally &mdash; see the repository README and
+                traceability matrix for current status.
             </p>
-            <ul class="menu-list">
-                <li><a th:href="@{/register}">Register as a new customer</a></li>
-                <li><a th:href="@{/vehicles}">Manage vehicles</a></li>
+            <ul class="menu-grid">
+                <li>
+                    <a class="menu-card" th:href="@{/register}">
+                        <span class="menu-icon">&#128100;</span>
+                        <span class="menu-title">Register as a customer</span>
+                        <span class="menu-desc">Create an account and get a registration number</span>
+                    </a>
+                </li>
+                <li>
+                    <a class="menu-card" th:href="@{/vehicles}">
+                        <span class="menu-icon">&#128664;</span>
+                        <span class="menu-title">Manage vehicles</span>
+                        <span class="menu-desc">View the fleet and add new vehicles</span>
+                    </a>
+                </li>
+                <li>
+                    <a class="menu-card" th:href="@{/drivers}">
+                        <span class="menu-icon">&#128118;</span>
+                        <span class="menu-title">Manage drivers</span>
+                        <span class="menu-desc">View drivers and add new ones</span>
+                    </a>
+                </li>
             </ul>
         </div>
     </main>

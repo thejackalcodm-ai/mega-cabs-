@@ -31,7 +31,7 @@ public class CustomerRegistrationRequest {
     }
 
     public void setUsername(String username) {
-        this.username = username;
+        this.username = username == null ? null : username.trim();
     }
 
     public String getPassword() {
@@ -47,7 +47,7 @@ public class CustomerRegistrationRequest {
     }
 
     public void setName(String name) {
-        this.name = name;
+        this.name = name == null ? null : name.trim();
     }
 
     public String getAddress() {
@@ -55,7 +55,7 @@ public class CustomerRegistrationRequest {
     }
 
     public void setAddress(String address) {
-        this.address = address;
+        this.address = address == null ? null : address.trim();
     }
 
     public String getNic() {
@@ -63,6 +63,6 @@ public class CustomerRegistrationRequest {
     }
 
     public void setNic(String nic) {
-        this.nic = nic;
+        this.nic = nic == null ? null : nic.trim().toUpperCase();
     }
 }

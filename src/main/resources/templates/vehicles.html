@@ -4,23 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Vehicles | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
     <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <header class="site-header">
-        <div class="brand">
-            <span class="brand-mark">MCC</span>
-            <h1>Mega City Cab</h1>
-        </div>
-    </header>
-    <main>
+    <div th:replace="~{fragments/nav :: header('vehicles')}"></div>
+    <main class="wide">
         <div class="card">
             <a class="back-link" th:href="@{/}">&larr; Home</a>
             <h2 class="page-title">Vehicles</h2>
+            <p class="page-lead">The current fleet available for booking.</p>
 
             <div class="alert-success" th:if="${successMessage}" th:text="${successMessage}"></div>
 
-            <p><a th:href="@{/vehicles/new}" class="btn-primary">Add vehicle</a></p>
+            <p><a th:href="@{/vehicles/new}" class="btn-primary btn-auto">+ Add vehicle</a></p>
 
             <table class="data-table" th:if="${!vehicles.isEmpty()}">
                 <thead>
@@ -40,12 +37,14 @@
                     <td th:text="${vehicle.type}"></td>
                     <td th:text="${vehicle.seatingCapacity}"></td>
                     <td th:text="${vehicle.dailyRate}"></td>
-                    <td th:text="${vehicle.status}"></td>
+                    <td><span class="badge" th:text="${vehicle.status}"></span></td>
                 </tr>
                 </tbody>
             </table>
 
-            <p class="status-note" th:if="${vehicles.isEmpty()}">No vehicles registered yet.</p>
+            <div class="empty-state" th:if="${vehicles.isEmpty()}">
+                <p>No vehicles registered yet.</p>
+            </div>
         </div>
     </main>
 </body>

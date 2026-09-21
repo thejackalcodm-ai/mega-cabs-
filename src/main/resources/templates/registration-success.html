@@ -4,20 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Registered | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
     <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <header class="site-header">
-        <div class="brand">
-            <span class="brand-mark">MCC</span>
-            <h1>Mega City Cab</h1>
-        </div>
-    </header>
+    <div th:replace="~{fragments/nav :: header('register')}"></div>
     <main>
         <div class="card">
             <a class="back-link" th:href="@{/}">&larr; Home</a>
             <h2 class="page-title">Registration successful</h2>
-            <p th:text="'Welcome, ' + ${name} + '.'"></p>
+            <p class="page-lead" th:text="'Welcome, ' + ${name} + '.'"></p>
             <p class="status-note">Your customer registration number is:</p>
             <div class="registration-no-box">
                 <div class="value" th:text="${registrationNo}"></div>

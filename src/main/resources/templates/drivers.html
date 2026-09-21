@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Drivers | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <div th:replace="~{fragments/nav :: header('drivers')}"></div>
+    <main class="wide">
+        <div class="card">
+            <a class="back-link" th:href="@{/}">&larr; Home</a>
+            <h2 class="page-title">Drivers</h2>
+            <p class="page-lead">Drivers available to assign to bookings.</p>
+
+            <div class="alert-success" th:if="${successMessage}" th:text="${successMessage}"></div>
+
+            <p><a th:href="@{/drivers/new}" class="btn-primary btn-auto">+ Add driver</a></p>
+
+            <table class="data-table" th:if="${!drivers.isEmpty()}">
+                <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>License no.</th>
+                    <th>Phone</th>
+                    <th>Status</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="driver : ${drivers}">
+                    <td th:text="${driver.name}"></td>
+                    <td th:text="${driver.licenseNo}"></td>
+                    <td th:text="${driver.phone}"></td>
+                    <td><span class="badge" th:text="${driver.status}"></span></td>
+                </tr>
+                </tbody>
+            </table>
+
+            <div class="empty-state" th:if="${drivers.isEmpty()}">
+                <p>No drivers registered yet.</p>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

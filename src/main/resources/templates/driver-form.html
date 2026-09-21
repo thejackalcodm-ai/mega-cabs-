@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Add Driver | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+    <div th:replace="~{fragments/nav :: header('drivers')}"></div>
+    <main>
+        <div class="card">
+            <a class="back-link" th:href="@{/drivers}">&larr; Drivers</a>
+            <h2 class="page-title">Add Driver</h2>
+
+            <div class="alert-error" th:if="${errorMessage}" th:text="${errorMessage}"></div>
+
+            <form th:action="@{/drivers}" th:object="${driverRequest}" method="post" novalidate="novalidate">
+                <div class="field" th:classappend="${#fields.hasErrors('name')} ? 'has-error'">
+                    <label for="name">Full name</label>
+                    <input type="text" id="name" th:field="*{name}" placeholder="e.g. Kamal Perera"/>
+                    <div class="field-error" th:if="${#fields.hasErrors('name')}" th:errors="*{name}"></div>
+                </div>
+
+                <div class="field" th:classappend="${#fields.hasErrors('licenseNo')} ? 'has-error'">
+                    <label for="licenseNo">License number</label>
+                    <input type="text" id="licenseNo" th:field="*{licenseNo}" placeholder="e.g. B1234567"/>
+                    <div class="field-error" th:if="${#fields.hasErrors('licenseNo')}" th:errors="*{licenseNo}"></div>
+                </div>
+
+                <div class="field" th:classappend="${#fields.hasErrors('phone')} ? 'has-error'">
+                    <label for="phone">Phone (optional)</label>
+                    <input type="text" id="phone" th:field="*{phone}" placeholder="e.g. 0771234567"/>
+                    <div class="field-error" th:if="${#fields.hasErrors('phone')}" th:errors="*{phone}"></div>
+                </div>
+
+                <button type="submit" class="btn-primary">Add driver</button>
+            </form>
+        </div>
+    </main>
+</body>
+</html>

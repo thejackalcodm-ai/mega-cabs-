@@ -4,15 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Add Vehicle | Mega City Cab</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}">
     <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
-    <header class="site-header">
-        <div class="brand">
-            <span class="brand-mark">MCC</span>
-            <h1>Mega City Cab</h1>
-        </div>
-    </header>
+    <div th:replace="~{fragments/nav :: header('vehicles')}"></div>
     <main>
         <div class="card">
             <a class="back-link" th:href="@{/vehicles}">&larr; Vehicles</a>
@@ -20,26 +16,26 @@
 
             <div class="alert-error" th:if="${errorMessage}" th:text="${errorMessage}"></div>
 
-            <form th:action="@{/vehicles}" th:object="${vehicleRequest}" method="post">
-                <div class="field">
+            <form th:action="@{/vehicles}" th:object="${vehicleRequest}" method="post" novalidate="novalidate">
+                <div class="field" th:classappend="${#fields.hasErrors('registrationNo')} ? 'has-error'">
                     <label for="registrationNo">Registration number</label>
                     <input type="text" id="registrationNo" th:field="*{registrationNo}" placeholder="e.g. CAB-1234"/>
                     <div class="field-error" th:if="${#fields.hasErrors('registrationNo')}" th:errors="*{registrationNo}"></div>
                 </div>
 
-                <div class="field">
+                <div class="field" th:classappend="${#fields.hasErrors('make')} ? 'has-error'">
                     <label for="make">Make</label>
                     <input type="text" id="make" th:field="*{make}" placeholder="e.g. Toyota"/>
                     <div class="field-error" th:if="${#fields.hasErrors('make')}" th:errors="*{make}"></div>
                 </div>
 
-                <div class="field">
+                <div class="field" th:classappend="${#fields.hasErrors('model')} ? 'has-error'">
                     <label for="model">Model</label>
                     <input type="text" id="model" th:field="*{model}" placeholder="e.g. Prius"/>
                     <div class="field-error" th:if="${#fields.hasErrors('model')}" th:errors="*{model}"></div>
                 </div>
 
-                <div class="field">
+                <div class="field" th:classappend="${#fields.hasErrors('type')} ? 'has-error'">
                     <label for="type">Type</label>
                     <select id="type" th:field="*{type}">
                         <option th:each="t : ${vehicleTypes}" th:value="${t}" th:text="${t}"></option>
@@ -47,13 +43,13 @@
                     <div class="field-error" th:if="${#fields.hasErrors('type')}" th:errors="*{type}"></div>
                 </div>
 
-                <div class="field">
+                <div class="field" th:classappend="${#fields.hasErrors('seatingCapacity')} ? 'has-error'">
                     <label for="seatingCapacity">Seating capacity</label>
                     <input type="number" id="seatingCapacity" th:field="*{seatingCapacity}" min="1"/>
                     <div class="field-error" th:if="${#fields.hasErrors('seatingCapacity')}" th:errors="*{seatingCapacity}"></div>
                 </div>
 
-                <div class="field">
+                <div class="field" th:classappend="${#fields.hasErrors('dailyRate')} ? 'has-error'">
                     <label for="dailyRate">Daily rate</label>
                     <input type="number" id="dailyRate" th:field="*{dailyRate}" step="0.01" min="0.01"/>
                     <div class="field-error" th:if="${#fields.hasErrors('dailyRate')}" th:errors="*{dailyRate}"></div>
