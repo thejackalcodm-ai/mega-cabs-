@@ -12,6 +12,14 @@
             <li><a th:href="@{/bookings}" th:classappend="${active == 'bookings'} ? 'active'">Bookings</a></li>
             <li><a th:href="@{/vehicles}" th:classappend="${active == 'vehicles'} ? 'active'">Vehicles</a></li>
             <li><a th:href="@{/drivers}" th:classappend="${active == 'drivers'} ? 'active'">Drivers</a></li>
+            <li><a th:href="@{/help}" th:classappend="${active == 'help'} ? 'active'">Help</a></li>
+            <li th:if="${currentUsername == null}">
+                <a th:href="@{/login}" th:classappend="${active == 'login'} ? 'active'">Login</a>
+            </li>
+            <li th:if="${currentUsername != null}" class="nav-user">
+                <span class="nav-username" th:text="${currentUsername}"></span>
+                <a th:href="@{/logout}">Logout</a>
+            </li>
         </ul>
     </div>
 </header>

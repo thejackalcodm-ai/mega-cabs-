@@ -45,6 +45,20 @@
                         <span class="menu-desc">View drivers and add new ones</span>
                     </a>
                 </li>
+                <li th:if="${currentUsername == null}">
+                    <a class="menu-card" th:href="@{/login}">
+                        <span class="menu-icon">&#128273;</span>
+                        <span class="menu-title">Login</span>
+                        <span class="menu-desc">Sign in with your registered username</span>
+                    </a>
+                </li>
+                <li>
+                    <a class="menu-card" th:href="@{/help}">
+                        <span class="menu-icon">&#10067;</span>
+                        <span class="menu-title">Help</span>
+                        <span class="menu-desc">A quick guide to using the app</span>
+                    </a>
+                </li>
             </ul>
         </div>
     </main>
