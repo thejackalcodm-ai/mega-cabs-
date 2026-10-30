@@ -1,0 +1,40 @@
+{
+  // Codespace for the Student Portal (student-portal/). The Java cab app keeps its own
+  // config in .devcontainer/devcontainer.json; pick this one under "New with options".
+  "name": "Student Portal (Node 22 + Supabase CLI)",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers-extra/features/supabase-cli:1": {}
+  },
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/student-portal",
+  "postCreateCommand": "npm ci",
+  "containerEnv": {
+    // one-click demo accounts on the login page (development only)
+    "VITE_ENABLE_DEMO_LOGIN": "true"
+  },
+  // Codespaces asks for these when the Codespace is created; they become environment
+  // variables, so no .env file (and no key) is ever committed.
+  "secrets": {
+    "VITE_SUPABASE_URL": {
+      "description": "Project URL, e.g. https://pyiucgqgkhvdqyanzzgc.supabase.co"
+    },
+    "VITE_SUPABASE_ANON_KEY": {
+      "description": "Publishable key (sb_publishable_...). Safe for the browser."
+    },
+    "SUPABASE_URL": {
+      "description": "Same project URL (used by npm run seed / verify:live)."
+    },
+    "SUPABASE_SERVICE_ROLE_KEY": {
+      "description": "Secret key (sb_secret_...). Only for npm run seed / verify:live in the terminal; never shipped to the browser."
+    }
+  },
+  "forwardPorts": [5173],
+  "portsAttributes": {
+    "5173": { "label": "Student Portal (Vite)", "onAutoForward": "openBrowser" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "bradlc.vscode-tailwindcss"]
+    }
+  }
+}

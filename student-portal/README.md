@@ -141,6 +141,64 @@ Open http://localhost:5173.
 
 ---
 
+## 1b. Running in GitHub Codespaces (no local install)
+
+A Codespace gives you Node 22, the Supabase CLI and this repo in the browser, so `supabase db push`,
+`npm run seed` and `npm run verify:live` can run there instead of on your computer.
+
+1. **Add the secrets once**: GitHub → your profile **Settings → Codespaces → Secrets → New secret**,
+   give each one access to this repository:
+   `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (publishable key), `SUPABASE_URL` (same URL) and
+   `SUPABASE_SERVICE_ROLE_KEY` (secret key). They become environment variables inside the
+   Codespace; nothing is written to the repository.
+2. **Create the Codespace**: on the repository page, **Code → Codespaces → ⋯ → New with options**,
+   choose branch `claude/dreamy-dijkstra-pm93d5` and the dev container configuration
+   **Student Portal (Node 22 + Supabase CLI)**. (The other configuration is the Java cab app.)
+   `npm ci` runs automatically; the terminal opens in `student-portal/`.
+3. **Run the app**:
+
+   ```bash
+   npm run dev
+   ```
+
+   Port 5173 opens in a new tab (`https://<codespace-name>-5173.app.github.dev`). To make sign-up
+   and password-reset links work, add that URL to Supabase **Authentication → URL Configuration →
+   Redirect URLs** (or `https://*.app.github.dev/**`).
+
+4. **Database, seed and checks** (same as Step 2 and Step 5):
+
+   ```bash
+   supabase login
+   ```
+
+   ```bash
+   supabase link --project-ref pyiucgqgkhvdqyanzzgc
+   ```
+
+   Run the two `supabase migration repair` commands from Step 2, then:
+
+   ```bash
+   supabase db push
+   ```
+
+   ```bash
+   npm run seed
+   ```
+
+   ```bash
+   npm run verify:live
+   ```
+
+   ```bash
+   supabase functions deploy admin-create-user
+   ```
+
+Unit tests (`npm test`), lint and build work in the Codespace as well. The database test suite
+(`npm run test:rls`) and the browser tests need PostgreSQL + pgTAP and Chromium; CI runs both on
+every push.
+
+---
+
 ## 2. Deploying to Vercel
 
 1. In Vercel, **Add New → Project** and import this GitHub repository.
