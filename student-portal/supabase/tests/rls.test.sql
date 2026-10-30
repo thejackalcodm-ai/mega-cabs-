@@ -178,6 +178,11 @@ select is((select array_agg(role::text) from public.user_roles where user_id = t
 select is((select role::text from public.user_roles where user_id = tests.id('admin')), 'admin', 'app_metadata role (service-controlled) is honoured');
 select is((select count(*)::int from public.students where profile_id = tests.id('admin')), 0, 'staff signup does not create a student row');
 select hasnt_column('public', 'profiles', 'role', 'roles are not stored on the user-editable profiles table');
+insert into public.documents (student_id, document_type_id, category, file_path, file_name, file_size, mime_type, status)
+select tests.id('stu_Carol'), id, category, tests.id('stu_Carol') || '/education/99999999-0000-0000-0000-000000000000-svc.pdf', 'svc.pdf', 10, 'application/pdf', 'approved'
+from public.document_types where key = 'transcript';
+select is((select status::text from public.documents where file_name = 'svc.pdf'), 'approved',
+  'service-role (trusted) document inserts keep their review status (migration 0012)');
 select is((select count(*)::int from public.application_documents where application_id = tests.id('app_alice')), 3,
   'new application gets its destination checklist automatically');
 

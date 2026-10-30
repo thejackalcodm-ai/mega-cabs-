@@ -77,3 +77,32 @@ Decisions made during the build, with the reason for each. Newest at the bottom 
   sparingly; Fraunces (display) + Inter (UI). Status colours always pair with text and an icon.
 - **ESLint enforces the services layer**: importing the Supabase client outside `src/services`
   is a lint error.
+
+## Phase 2
+
+- **`database.ts` generated from the local schema.** `supabase gen types` needs a linked project,
+  which this environment can't reach. `supabase/tests/local/gen-types.py` produces the same shape
+  (tables, relationships for typed joins, views, RPC signatures, enums) from the migrated catalog.
+  Run `npm run db:types` once linked; the output should be equivalent.
+- **Migration 0012 instead of editing 0005.** Phase 1 may already be applied to your project, so
+  the document-guard fix (trust the service role) is a new migration. Applied migrations are never
+  edited.
+- **Roles drive routing in one place**: `navigation.ts` lists every page with its allowed roles; the
+  router generates guarded routes from it and the sidebar filters by the same list. UI hiding is a
+  convenience; RLS remains the actual enforcement.
+- **Pages from later phases are reachable but honest**: they show "this module is being built in
+  phase N" and perform no actions, instead of fake data or dead buttons.
+- **Demo login is compiled out** unless `VITE_ENABLE_DEMO_LOGIN=true` at build time (verified by
+  grepping the production bundle).
+- **The verify-email page always resends via Supabase** and the forgot-password page always shows
+  the same message whether or not the email exists, so accounts can't be enumerated.
+- **Seed is idempotent by construction**: deterministic ids (UUID v5-style), upserts, and cleanup of
+  rows that triggers create on first insert (automatic timeline and notification rows), so the demo
+  looks the same after every run. It talks to Supabase only through a small `SeedTarget` interface;
+  a second implementation writes to plain Postgres so the full seed can be verified locally.
+- **Browser tests use a mock of the Supabase HTTP API** (`e2e/mock-supabase.mjs`) because no Supabase
+  stack (and no PostgREST binary) is available here. They verify UI behaviour: forms, redirects,
+  guards, layouts, session handling. Data security is verified by pgTAP and, on a real project,
+  by `npm run verify:live`.
+- **Uploads are validated three times**: extension + declared MIME type + leading-byte signature in
+  the browser (`src/lib/files.ts`), bucket MIME/size limits, and table check constraints.

@@ -24,16 +24,36 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run build
-      - run: npm test -- --passWithNoTests
+      - run: npm test
+      - name: Verify demo credentials are not in a production build
+        run: |
+          VITE_SUPABASE_URL=https://ci.supabase.co VITE_SUPABASE_ANON_KEY=ci-anon-key-placeholder VITE_ENABLE_DEMO_LOGIN=false npx vite build --outDir /tmp/prod
+          ! grep -rq 'Demo#Pass123' /tmp/prod
+      - name: Browser tests (auth, routing, layouts; mocked Supabase API)
+        run: |
+          npm install --no-save playwright@1.48.2
+          npx playwright install --with-deps chromium
+          npm run e2e
 
   database:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: student-portal/package-lock.json
+      - run: npm ci
       - name: Start PostgreSQL 16 and install pgTAP
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-16-pgtap
           sudo systemctl start postgresql
+          sudo -u postgres psql -c "alter user postgres password 'postgres'"
       - name: Migrations + RLS / security suite
         run: sudo -u postgres bash supabase/tests/run-local.sh
+      - name: Seed runs and is idempotent
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/portal_rls_test
+        run: bash supabase/tests/seed-idempotency.sh

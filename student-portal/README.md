@@ -4,10 +4,11 @@ A Supabase + React (Vite, TypeScript) SaaS platform for international students: 
 onboarding, secure document management, university applications, an LMS (courses, quizzes,
 assignments), payments, messaging and a separate admin/staff portal.
 
-> **Build status: Phase 1 of 8 complete.** The database (schema, RLS, storage policies, core
-> database functions) is finished and tested. The web app is currently the Phase 0 foundation
-> (styled shell, design tokens). See [TEST_REPORT.md](TEST_REPORT.md) and [KNOWN_GAPS.md](KNOWN_GAPS.md)
-> for exactly what is and is not done yet.
+> **Build status: Phase 2 of 8 complete.** Database (schema, RLS, storage, core functions), auth
+> (sign up, verify, login, logout, password reset, sessions), role-based routing, the student and
+> staff layouts, shared components, the demo login panel and the idempotent seed are done. Feature
+> modules (profile, documents, applications, LMS…) arrive in Phases 3–8 and currently show an honest
+> "being built" page. See [TEST_REPORT.md](TEST_REPORT.md) and [KNOWN_GAPS.md](KNOWN_GAPS.md).
 
 This folder lives inside the `mega-cabs-` repository; everything for the portal is under
 `student-portal/`. The Java project at the repo root is unrelated and untouched.
@@ -114,7 +115,7 @@ Open http://localhost:5173.
 
 ---
 
-## 3. Demo accounts (created by the seed script — Phase 2)
+## 3. Demo accounts (created by `npm run seed`)
 
 | Role        | Email                  | Password     |
 | ----------- | ---------------------- | ------------ |
@@ -124,7 +125,12 @@ Open http://localhost:5173.
 | Instructor  | instructor@demo.portal | Demo#Pass123 |
 | Student     | student@demo.portal    | Demo#Pass123 |
 
-These are for development only. Do not seed them into a production project.
+Nine more students (for example `kavindu.jayasinghe@demo.portal`) use the same password. All people
+and documents are fictional.
+
+**Demo login panel:** set `VITE_ENABLE_DEMO_LOGIN=true` to show one-click buttons for each role on
+the login page. With the flag off, the panel and its credentials are not even included in the
+production bundle. These accounts are for development only; do not seed a production project.
 
 ---
 
@@ -205,5 +211,21 @@ roles, never their own. Helper functions used by RLS: `current_app_role()`, `has
 | `assignment-submissions` | `{student_id}/{assignment_id}/{uuid}-{filename}`                           |
 | `message-attachments`    | `{thread_id}/{uuid}-{filename}` or `tickets/{ticket_id}/{uuid}-{filename}` |
 | `course-resources`       | `{course_id}/{uuid}-{filename}`                                            |
+
+### Frontend layout
+
+| Path                    | Purpose                                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `src/app`               | router, providers (auth, query), layouts (`AppShell`), route guards, navigation config                                   |
+| `src/features/*`        | screens per module (`auth`, `dashboard`, `admin`, `system`, …)                                                           |
+| `src/services/*`        | the only modules that call Supabase (ESLint-enforced)                                                                    |
+| `src/components/ui`     | shadcn/Radix primitives                                                                                                  |
+| `src/components/shared` | `StatusBadge`, `DataTable`, `EmptyState`, `ErrorState`, skeletons, `ConfirmDialog`, `FileUploader`, `FormField`, toasts… |
+| `src/lib`               | constants (status maps), roles, errors, file validation, formatting, integrations                                        |
+| `src/types/database.ts` | database types (`npm run db:types` regenerates from your project)                                                        |
+
+Routing: `/app/*` is the student portal, `/admin/*` the staff portal. Sign-in redirects by role;
+opening a page for another role goes to `/unauthorized`. Navigation and route guards come from the
+same config (`src/app/navigation.ts`), so a menu item and its permission check can't drift apart.
 
 See [DECISIONS.md](DECISIONS.md) for the reasoning behind the main design choices.
