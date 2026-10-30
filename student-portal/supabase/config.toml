@@ -46,3 +46,9 @@ max_frequency = "60s"
 email_sent = 4
 sign_in_sign_ups = 30
 token_verifications = 30
+
+[functions.admin-create-user]
+# The function verifies the caller itself (auth.getUser with the caller's token) and rejects
+# missing/invalid tokens with 401, so gateway JWT verification is not needed. Turning it off keeps
+# the function working on projects that use the new sb_publishable_/sb_secret_ API keys.
+verify_jwt = false

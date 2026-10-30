@@ -497,5 +497,136 @@ select ok((public.profile_completion() ->> 'percent')::int between 1 and 99, 'pr
 select ok(jsonb_array_length(public.profile_completion() -> 'missing') > 0, 'profile completion lists missing information');
 reset role;
 
+
+-- =============================================================================
+-- Phase 4 · admin & counselor workspaces
+-- =============================================================================
+-- Gate fixture: Alice uploads her statement of purpose (as the student).
+insert into tests.fixtures values ('doc_alice_sop', '41000000-0000-0000-0000-000000000001');
+select tests.auth_as('alice');
+set local role authenticated;
+insert into public.documents (id, student_id, document_type_id, category, file_path, file_name, file_size, mime_type)
+select '41000000-0000-0000-0000-000000000001', tests.id('stu_Alice'), id, category,
+       tests.id('stu_Alice') || '/education/41000000-0000-0000-0000-000000000001-sop.pdf', 'sop.pdf', 2048, 'application/pdf'
+from public.document_types where key = 'sop';
+-- a student cannot review, in any form
+select throws_ok($$select public.review_document(tests.id('doc_alice_sop'), 'resubmission_required', 'self')$$, '42501', null, '[P4] student cannot request resubmission on her own document');
+select throws_ok($$select public.review_document(tests.id('doc_alice_sop'), 'under_review')$$, '42501', null, '[P4] student cannot mark her document under review');
+select throws_ok($$select public.admin_dashboard_metrics()$$, '42501', null, '[P4] student cannot read admin metrics');
+select throws_ok($$select public.counselor_dashboard()$$, '42501', null, '[P4] student cannot read the counselor dashboard');
+select throws_ok($$select public.assign_counselor(tests.id('stu_Alice'), null)$$, '42501', null, '[P4] student cannot change her counselor');
+select is((select count(*)::int from public.student_directory), 1, '[P4] student sees only herself in the directory');
+reset role;
+select is((select count(*)::int from public.notifications where recipient_id = tests.id('counselor') and type = 'document_uploaded' and link like '%' || tests.id('doc_alice_sop')), 1,
+  '[P4] assigned counselor is notified of the new upload');
+
+-- counselor scope
+select tests.auth_as('counselor');
+set local role authenticated;
+select is((select count(*)::int from public.student_directory), 2, '[P4] counselor directory lists only the 2 assigned students');
+select is((select count(*)::int from public.student_directory where id = tests.id('stu_Carol')), 0, '[P4] counselor directory has no row for an unassigned student');
+select is((public.admin_dashboard_metrics() ->> 'total_students')::int, 2, '[P4] counselor metrics are scoped to assigned students');
+select is(public.admin_dashboard_metrics() ->> 'scope', 'assigned', '[P4] metrics report their scope');
+select is((public.counselor_dashboard() ->> 'assigned_students')::int, 2, '[P4] counselor dashboard counts assigned students');
+select ok((select bool_and((x ->> 'student_id')::uuid in (tests.id('stu_Alice'), tests.id('stu_Bob'))) from jsonb_array_elements(public.counselor_dashboard() -> 'pending_documents') x),
+  '[P4] counselor dashboard pending documents belong to assigned students only');
+select throws_ok($$select public.assign_counselor(tests.id('stu_Bob'), null)$$, '42501', null, '[P4] counselor cannot reassign students');
+select throws_ok($$update public.students set counselor_id = null where id = tests.id('stu_Bob')$$, '42501', null, '[P4] counselor cannot change counselor_id directly');
+select is(tests.affected($$update public.profiles set first_name = 'X' where id = tests.id('carol')$$), 0, '[P4] counselor cannot edit an unassigned student');
+select is((select count(*)::int from public.student_profiles where student_id = tests.id('stu_Carol')), 0, '[P4] counselor cannot read an unassigned student profile');
+select throws_ok($$select public.request_document(tests.id('stu_Carol'), (select id from public.document_types where key = 'ielts'))$$, '42501', null,
+  '[P4] counselor cannot request documents from an unassigned student');
+select throws_ok($$select public.log_admin_user_created(tests.id('alice'), 'student')$$, '42501', null, '[P4] counselor cannot create users');
+reset role;
+
+-- instructor has no access to these aggregates
+select tests.auth_as('instructor');
+set local role authenticated;
+select throws_ok($$select public.admin_dashboard_metrics()$$, '42501', null, '[P4] instructor cannot read student metrics');
+select is((select count(*)::int from public.student_directory where id = tests.id('stu_Bob')), 0, '[P4] instructor directory excludes students outside their courses');
+reset role;
+
+-- GATE (database): reject with reason → student sees it → replacement → approve, with notifications and audit
+select tests.auth_as('admin');
+set local role authenticated;
+select throws_ok($$select public.review_document(tests.id('doc_alice_sop'), 'rejected', '')$$, '22023', 'A reason is required', '[GATE] reject without a reason is refused');
+select is((public.review_document(tests.id('doc_alice_sop'), 'rejected', 'Over 1,000 words', 'Strong opening', 'Shorten it to under 1,000 words')).status::text, 'rejected',
+  '[GATE] admin rejects with a reason');
+reset role;
+select tests.auth_as('alice');
+set local role authenticated;
+select is((select rejection_reason || ' | ' || required_action || ' | ' || reviewer_comment from public.documents where id = tests.id('doc_alice_sop')),
+  'Over 1,000 words | Shorten it to under 1,000 words | Strong opening', '[GATE] student sees reason, required action and comment');
+select is((public.replace_document(tests.id('doc_alice_sop'), tests.id('stu_Alice') || '/education/41000000-0000-0000-0000-000000000002-sop-v2.pdf', 'sop-v2.pdf', 2100, 'application/pdf')).version, 2,
+  '[GATE] student uploads a replacement (version 2)');
+reset role;
+select tests.auth_as('admin');
+set local role authenticated;
+select is((public.review_document(tests.id('doc_alice_sop'), 'approved', null, 'Thanks')).status::text, 'approved', '[GATE] admin approves the replacement');
+reset role;
+select is((select count(*)::int from public.notifications where recipient_id = tests.id('alice') and type = 'document_rejected' and link like '%' || tests.id('doc_alice_sop')), 1, '[GATE] student notified of the rejection');
+select is((select count(*)::int from public.notifications where recipient_id = tests.id('counselor') and type = 'document_uploaded' and link like '%' || tests.id('doc_alice_sop')), 2, '[GATE] counselor notified of the upload and the replacement');
+select is((select count(*)::int from public.notifications where recipient_id = tests.id('alice') and type = 'document_approved' and link like '%' || tests.id('doc_alice_sop')), 1, '[GATE] student notified of the approval');
+select is((select string_agg(action || ':' || coalesce((select email from public.profiles where id = actor_id), 'system'), ', ' order by created_at, action)
+           from public.audit_logs where entity_id = tests.id('doc_alice_sop')),
+  'document.uploaded:alice@test.local, document.rejected:admin@test.local, document.replaced:alice@test.local, document.approved:admin@test.local',
+  '[GATE] audit trail: uploaded (student), rejected (admin), replaced (student), approved (admin)');
+select is((select string_agg(action::text || '@v' || version, ',' order by created_at) from public.document_reviews where document_id = tests.id('doc_alice_sop')), 'rejected@v1,approved@v2',
+  '[GATE] review history records each action against its version');
+
+-- admin: counselor assignment, user creation audit, role changes
+select tests.auth_as('admin');
+set local role authenticated;
+select throws_ok(format($$select public.assign_counselor(%L, %L)$$, tests.id('stu_Alice'), tests.id('staff_Ivy')), '22023', 'Choose an active counselor', '[P4] only counselors can be assigned');
+select lives_ok(format($$select public.assign_counselor(%L, %L)$$, tests.id('stu_Carol'), tests.id('staff_Cleo')), '[P4] admin assigns a counselor');
+select lives_ok($$select public.log_admin_user_created(tests.id('carol'), 'student')$$, '[P4] admin may record creating a student');
+select throws_ok($$select public.log_admin_user_created(tests.id('counselor2'), 'counselor')$$, '42501', null, '[P4] admin cannot create staff accounts');
+select is(tests.affected($$update public.user_roles set role = 'super_admin' where user_id = tests.id('admin')$$), 0, '[P4] admin cannot change her own role');
+select is(tests.affected($$update public.user_roles set role = 'admin' where user_id = tests.id('alice')$$), 0, '[P4] admin cannot change a student role (0 rows)');
+select is(tests.affected($$delete from public.user_roles where user_id = tests.id('counselor')$$), 0, '[P4] admin cannot revoke roles (0 rows)');
+select is((select array_agg(role::text order by role) from public.user_roles where user_id = tests.id('alice')), array['student'], '[P4] ... and the roles are unchanged');
+select is((public.admin_dashboard_metrics() ->> 'total_students')::int, 3, '[P4] admin metrics cover every student');
+reset role;
+select is((select count(*)::int from public.audit_logs where action = 'student.counselor_assigned' and entity_id = tests.id('stu_Carol') and actor_id = tests.id('admin')), 1, '[P4] counselor assignment audited');
+select is((select count(*)::int from public.notifications where recipient_id = tests.id('counselor') and type = 'counselor_assigned'), 1, '[P4] counselor notified of the new assignment');
+select is((select count(*)::int from public.audit_logs where action = 'user.created' and entity_id = tests.id('carol') and actor_id = tests.id('admin')), 1, '[P4] user creation audited with the admin as actor');
+select tests.auth_as('super');
+set local role authenticated;
+select lives_ok($$select public.log_admin_user_created(tests.id('counselor2'), 'counselor')$$, '[P4] super admin may record creating staff');
+select throws_ok($$update public.user_roles set role = 'admin' where user_id = tests.id('super')$$, '42501', null, '[P4] super admin cannot change her own role');
+
+-- deactivated users lose access (counselor deactivated by the super admin)
+update public.profiles set is_active = false where id = tests.id('counselor');
+reset role;
+select tests.auth_as('counselor');
+set local role authenticated;
+select is((select count(*)::int from public.students), 0, '[P4] deactivated counselor sees no students');
+select is((select count(*)::int from public.student_directory), 0, '[P4] deactivated counselor directory is empty');
+select throws_ok($$select public.review_document(tests.id('doc_bob_passport'), 'approved')$$, '42501', null, '[P4] deactivated counselor cannot review');
+select throws_ok($$select * from public.authorize_document_access(tests.id('doc_bob_passport'))$$, '42501', null, '[P4] deactivated counselor cannot open documents');
+select throws_ok($$select public.counselor_dashboard()$$, '42501', null, '[P4] deactivated counselor has no dashboard');
+reset role;
+select tests.auth_as('carol');
+set local role authenticated;
+select throws_ok($$select * from public.authorize_document_access(tests.id('doc_carol_passport'))$$, '42501', null, '[P4] deactivated student cannot open her own documents');
+select throws_ok($$select public.profile_completion()$$, '42501', null, '[P4] deactivated student cannot read her own profile data');
+reset role;
+
+-- function privileges (0016): no PUBLIC/anon execution, trigger functions not callable
+select is((select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')
+             and not exists (select 1 from pg_depend d where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')),
+          0, '[0016] anon can execute no public function');
+select is((select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.prorettype = 'trigger'::regtype
+             and has_function_privilege('authenticated', p.oid, 'execute')),
+          0, '[0016] authenticated cannot call trigger functions');
+select ok(not has_function_privilege('authenticated', 'public.recompute_invoice(uuid)', 'execute'), '[0016] internal recompute_invoice stays revoked');
+select ok(has_function_privilege('authenticated', 'public.can_access_student(uuid)', 'execute'), '[0016] RLS helpers stay executable for authenticated');
+select ok(has_function_privilege('authenticated', 'public.review_document(uuid, public.review_action, text, text, text)', 'execute'), '[0016] review_document stays callable by authenticated');
+select ok(has_function_privilege('authenticated', 'public.admin_dashboard_metrics()', 'execute'), '[0016] Phase 4 RPCs stay callable by authenticated');
+select throws_ok($$set local role anon; select public.is_admin()$$, '42501', null, '[0016] anon calling an RPC is refused by privileges');
+reset role;
+
 select * from finish();
 rollback;

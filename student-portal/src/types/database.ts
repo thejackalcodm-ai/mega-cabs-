@@ -2787,6 +2787,17 @@ export type Database = {
         }
         Relationships: []
       }
+      counselor_directory: {
+        Row: {
+          staff_id: string | null
+          profile_id: string | null
+          first_name: string | null
+          last_name: string | null
+          email: string | null
+          assigned_students: number | null
+        }
+        Relationships: []
+      }
       my_threads: {
         Row: {
           id: string | null
@@ -2802,11 +2813,44 @@ export type Database = {
         }
         Relationships: []
       }
+      student_directory: {
+        Row: {
+          id: string | null
+          student_number: string | null
+          profile_id: string | null
+          first_name: string | null
+          last_name: string | null
+          email: string | null
+          phone: string | null
+          country: string | null
+          nationality: string | null
+          is_active: boolean | null
+          last_seen_at: string | null
+          counselor_id: string | null
+          counselor_name: string | null
+          journey_stage: Database["public"]["Enums"]["journey_stage"] | null
+          onboarding_completed: boolean | null
+          created_at: string | null
+          active_applications: number | null
+          documents_pending: number | null
+          documents_action: number | null
+          latest_application_status: Database["public"]["Enums"]["application_status"] | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      admin_dashboard_metrics: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       application_status_label: {
         Args: { s: Database["public"]["Enums"]["application_status"] }
         Returns: string
+      }
+      assign_counselor: {
+        Args: { p_student_id: string; p_staff_id: string }
+        Returns: undefined
       }
       authorize_document_access: {
         Args: { p_document_id: string; p_purpose?: string; p_version?: number }
@@ -2831,6 +2875,10 @@ export type Database = {
       can_view_learning: {
         Args: { p_student_id: string; p_course_id: string }
         Returns: boolean
+      }
+      counselor_dashboard: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       course_is_published: {
         Args: { p_course_id: string }
@@ -2916,6 +2964,10 @@ export type Database = {
         Args: { p_thread_id: string }
         Returns: boolean
       }
+      log_admin_user_created: {
+        Args: { p_user_id: string; p_role: Database["public"]["Enums"]["app_role"] }
+        Returns: undefined
+      }
       log_client_event: {
         Args: { p_action: string; p_entity_type?: string; p_entity_id?: string; p_metadata?: Json }
         Returns: undefined
@@ -2984,7 +3036,7 @@ export type Database = {
       invoice_status: "draft" | "open" | "paid" | "cancelled" | "refunded"
       journey_stage: "register" | "complete_profile" | "select_destination" | "explore_universities" | "select_course" | "start_application" | "upload_documents" | "document_review" | "submit_application" | "receive_offer" | "accept_offer" | "pay_deposit" | "visa_preparation" | "visa_application" | "pre_departure" | "start_studies"
       lesson_content_type: "video" | "article" | "pdf"
-      notification_type: "document_approved" | "document_rejected" | "document_required" | "application_status" | "university_offer" | "payment_received" | "payment_due" | "new_course" | "assignment_deadline" | "assignment_graded" | "quiz_result" | "new_message" | "counselor_message" | "support_update" | "system"
+      notification_type: "document_approved" | "document_rejected" | "document_required" | "application_status" | "university_offer" | "payment_received" | "payment_due" | "new_course" | "assignment_deadline" | "assignment_graded" | "quiz_result" | "new_message" | "counselor_message" | "support_update" | "system" | "document_uploaded" | "counselor_assigned"
       payment_status: "pending" | "paid" | "failed" | "refunded" | "cancelled"
       question_type: "multiple_choice" | "multiple_answer" | "true_false" | "short_answer" | "matching" | "ordering"
       review_action: "under_review" | "approved" | "rejected" | "resubmission_required"
