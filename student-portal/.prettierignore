@@ -1,0 +1,4 @@
+dist
+node_modules
+supabase/migrations
+src/types/database.ts
