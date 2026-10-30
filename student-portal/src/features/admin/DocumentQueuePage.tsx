@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Eye, Info } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Eye } from 'lucide-react'
 import { useCurrentUser } from '@/app/providers/auth-context'
 import { Button } from '@/components/ui/button'
 import { NativeSelect } from '@/components/ui/native-select'
@@ -17,6 +18,7 @@ import type { Enums } from '@/types/database'
 /** Documents waiting for review. Counselors see their assigned students only (enforced by RLS). */
 export function DocumentQueuePage() {
   const user = useCurrentUser()
+  const navigate = useNavigate()
   const types = useDocumentTypes()
   const queue = useQuery({
     queryKey: documentKeys.queue,
@@ -80,14 +82,21 @@ export function DocumentQueuePage() {
       id: 'actions',
       header: '',
       cell: (r) => (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setPreview({ documentId: r.id, title: `${r.typeName} · ${r.studentName}` })}
-          aria-label={`Preview ${r.typeName} for ${r.studentName}`}
-        >
-          <Eye /> Preview
-        </Button>
+        <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setPreview({ documentId: r.id, title: `${r.typeName} · ${r.studentName}` })}
+            aria-label={`Preview ${r.typeName} for ${r.studentName}`}
+          >
+            <Eye />
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <Link to={`/admin/documents/${r.id}`} aria-label={`Review ${r.typeName} for ${r.studentName}`}>
+              Review
+            </Link>
+          </Button>
+        </div>
       ),
       className: 'text-right',
     },
@@ -103,13 +112,9 @@ export function DocumentQueuePage() {
             : 'Documents awaiting review, oldest first.'
         }
       />
-      <p className="mb-4 flex items-start gap-2 rounded-md border bg-surface px-3 py-2 text-sm text-muted-foreground">
-        <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
-        Approve, reject and request-resubmission actions arrive with the review workspace in Phase 4. Every
-        preview here is recorded in the audit log.
-      </p>
       <DataTable
         caption="Documents awaiting review"
+        onRowClick={(r) => navigate(`/admin/documents/${r.id}`)}
         columns={columns}
         data={rows}
         getRowId={(r) => r.id}

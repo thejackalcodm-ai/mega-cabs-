@@ -84,7 +84,7 @@ export const STUDENT_NAV: NavGroup[] = [
 /** Mobile bottom bar (the rest is in the menu drawer). */
 export const STUDENT_BOTTOM_NAV = ['', 'applications', 'documents', 'learning']
 
-const STUDENT_MANAGERS: AppRole[] = ['counselor', 'admin', 'super_admin']
+export const STUDENT_MANAGERS: AppRole[] = ['counselor', 'admin', 'super_admin']
 const COURSE_MANAGERS: AppRole[] = ['instructor', 'admin', 'super_admin']
 
 export const ADMIN_NAV: NavGroup[] = [
@@ -92,7 +92,7 @@ export const ADMIN_NAV: NavGroup[] = [
   {
     label: 'Students',
     items: [
-      { label: 'Students', path: 'students', icon: Users, roles: STUDENT_MANAGERS, phase: 4 },
+      { label: 'Students', path: 'students', icon: Users, roles: STUDENT_MANAGERS },
       { label: 'Applications', path: 'applications', icon: Send, roles: STUDENT_MANAGERS, phase: 5 },
       { label: 'Documents', path: 'documents', icon: FileCheck2, roles: STUDENT_MANAGERS },
       { label: 'Universities', path: 'universities', icon: Building2, roles: ADMIN_ROLES, phase: 5 },

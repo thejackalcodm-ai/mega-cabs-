@@ -1,7 +1,14 @@
 /* eslint-disable react-refresh/only-export-components -- route table, not a component module */
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Outlet, type RouteObject } from 'react-router-dom'
-import { ADMIN_NAV, PORTALS, STUDENT_BOTTOM_NAV, STUDENT_NAV, type NavGroup } from '@/app/navigation'
+import {
+  ADMIN_NAV,
+  PORTALS,
+  STUDENT_BOTTOM_NAV,
+  STUDENT_MANAGERS,
+  STUDENT_NAV,
+  type NavGroup,
+} from '@/app/navigation'
 import { GuestOnly, RequireAuth, RequireRole, RootRedirect } from '@/app/routes/guards'
 import { FullPageLoader } from '@/components/shared/FullPageLoader'
 import { ComingSoonPage } from '@/features/system/ComingSoonPage'
@@ -28,6 +35,15 @@ const ProfilePage = named(() => import('@/features/profile/ProfilePage'), 'Profi
 const OnboardingPage = named(() => import('@/features/onboarding/OnboardingPage'), 'OnboardingPage')
 const DocumentsPage = named(() => import('@/features/documents/DocumentsPage'), 'DocumentsPage')
 const DocumentQueuePage = named(() => import('@/features/admin/DocumentQueuePage'), 'DocumentQueuePage')
+const DocumentReviewPage = named(
+  () => import('@/features/admin/review/DocumentReviewPage'),
+  'DocumentReviewPage',
+)
+const StudentsPage = named(() => import('@/features/admin/students/StudentsPage'), 'StudentsPage')
+const StudentDetailPage = named(
+  () => import('@/features/admin/students/StudentDetailPage'),
+  'StudentDetailPage',
+)
 
 /** Built pages by path; everything else in the nav shows its "being built" page. */
 const STUDENT_PAGES: Record<string, React.ReactNode> = {
@@ -37,7 +53,27 @@ const STUDENT_PAGES: Record<string, React.ReactNode> = {
 }
 const ADMIN_PAGES: Record<string, React.ReactNode> = {
   documents: <DocumentQueuePage />,
+  students: <StudentsPage />,
 }
+/** Detail routes that are not nav items (same guard as their list page). */
+const ADMIN_DETAIL_ROUTES: RouteObject[] = [
+  {
+    path: 'students/:studentId',
+    element: (
+      <RequireRole roles={STUDENT_MANAGERS}>
+        <StudentDetailPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: 'documents/:documentId',
+    element: (
+      <RequireRole roles={STUDENT_MANAGERS}>
+        <DocumentReviewPage />
+      </RequireRole>
+    ),
+  },
+]
 
 function Lazy() {
   return (
@@ -120,7 +156,10 @@ export const routes: RouteObject[] = [
                 />
               </RequireRole>
             ),
-            children: portalChildren(ADMIN_NAV, PORTALS.admin.base, <AdminDashboardPage />, ADMIN_PAGES),
+            children: [
+              ...portalChildren(ADMIN_NAV, PORTALS.admin.base, <AdminDashboardPage />, ADMIN_PAGES),
+              ...ADMIN_DETAIL_ROUTES,
+            ],
           },
         ],
       },
