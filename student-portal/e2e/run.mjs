@@ -23,7 +23,7 @@ const APP = `http://localhost:${APP_PORT}`
 const SHOTS = process.env.E2E_SCREENSHOTS ?? path.resolve('e2e/.screenshots')
 mkdirSync(SHOTS, { recursive: true })
 
-const { server, calls, users } = createMock()
+const { server, calls, users, db, audit, objects, failures } = createMock()
 await new Promise((r) => server.listen(MOCK_PORT, r))
 const vite = spawn('npx', ['vite', '--port', String(APP_PORT), '--strictPort'], {
   env: {
@@ -418,6 +418,440 @@ await test('keyboard: skip link is the first stop in the app shell', async (page
     'skip link not first',
   )
 })
+
+// ================================================================== Phase 3: documents, profile, onboarding
+const pdf = (name, extra = '') => ({
+  name,
+  mimeType: 'application/pdf',
+  buffer: Buffer.from(`%PDF-1.4\n% demo ${extra}\n1 0 obj<<>>endobj\n%%EOF\n`),
+})
+const studentId = () => db.students.find((x) => x.profile_id === users.get('student@demo.portal').id).id
+const card = (page, title) => page.locator('[aria-label^="' + title + ', "]')
+
+async function studentDocs(page) {
+  await demoLogin(page, 'Student')
+  await page.waitForURL(`${APP}/app`)
+  await page.goto(`${APP}/app/documents`)
+  await page.getByRole('heading', { name: 'My documents' }).waitFor()
+  await card(page, 'Passport').waitFor()
+}
+
+await test('documents: checklist, statuses and reviewer feedback are shown', async (page) => {
+  await studentDocs(page)
+  await page.getByText('Northbridge University').waitFor()
+  await page.getByText('20%', { exact: true }).waitFor() // 1 of 5 required approved
+  await page.getByText('1 of 5 required approved').waitFor()
+  const bank = card(page, 'Bank Statement')
+  await bank.getByText('Resubmission required', { exact: false }).first().waitFor()
+  await bank.getByText('The statement is older than 31 days.').waitFor()
+  await bank.getByText('Upload a statement dated within the last 31 days.').waitFor()
+  await bank.getByText('Ask your bank for a stamped statement.').waitFor()
+  assert(
+    (await card(page, 'Passport')
+      .getByRole('button', { name: /Delete/ })
+      .count()) === 0,
+    'approved document must not offer delete',
+  )
+  assert(
+    (await card(page, 'Passport')
+      .getByRole('button', { name: /Replace/ })
+      .count()) === 0,
+    'approved document must not offer replace',
+  )
+  assert(
+    (await card(page, 'IELTS Certificate')
+      .getByRole('button', { name: /Delete/ })
+      .count()) === 0,
+    'under-review document must not offer delete',
+  )
+  await shot(page, 'documents-student')
+})
+
+await test('documents: file validation rejects wrong type, renamed executables and >10 MB', async (page) => {
+  await studentDocs(page)
+  await page.getByRole('button', { name: 'Upload document' }).click()
+  const input = page.getByRole('dialog').locator('input[type=file]')
+  await input.setInputFiles({
+    name: 'setup.exe',
+    mimeType: 'application/x-msdownload',
+    buffer: Buffer.from('MZ\x90\x00'),
+  })
+  await page.getByText("This file type isn't allowed").waitFor()
+  await input.setInputFiles({
+    name: 'passport.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('MZ\x90\x00 not a pdf'),
+  })
+  await page.getByText("doesn't look like a valid PDF").waitFor()
+  await input.setInputFiles({
+    name: 'huge.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.concat([Buffer.from('%PDF-1.4'), Buffer.alloc(10 * 1024 * 1024)]),
+  })
+  await page.getByText('The limit is 10 MB').waitFor()
+  await input.setInputFiles({
+    name: 'photo.png',
+    mimeType: 'image/jpeg',
+    buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+  })
+  await page.getByText("contents don't match its extension").waitFor()
+  assert(
+    !calls.some(
+      (c) =>
+        c.method === 'POST' &&
+        c.path.startsWith('/storage/v1/object/student-documents/') &&
+        /exe|huge/.test(c.path),
+    ),
+    'invalid file reached storage',
+  )
+})
+
+await test('GATE documents: student uploads a document to private storage (sanitised name, audited)', async (page) => {
+  await studentDocs(page)
+  await page.getByRole('button', { name: 'Upload document' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel(/^Category/).selectOption('education')
+  await dialog.getByLabel(/^Document type/).selectOption({ label: 'Transcript' })
+  await dialog.locator('input[type=file]').setInputFiles(pdf('Final Transcript (Oct) é.pdf'))
+  await dialog.getByText('Final Transcript (Oct) é.pdf').waitFor()
+  await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
+  await page.getByText('Document uploaded').waitFor()
+  await card(page, 'Transcript').getByText('Uploaded', { exact: true }).waitFor()
+  const put = calls.find(
+    (c) =>
+      c.method === 'POST' &&
+      c.path.includes('/storage/v1/object/student-documents/') &&
+      c.path.includes('Final-Transcript'),
+  )
+  assert(put, 'no storage upload')
+  const path = decodeURIComponent(put.path.replace('/storage/v1/object/student-documents/', ''))
+  assert(
+    new RegExp(`^${studentId()}/education/[0-9a-f-]{36}-Final-Transcript-Oct-e\\.pdf$`).test(path),
+    `bad storage path ${path}`,
+  )
+  assert(
+    objects.get(`student-documents/${path}`).bytes.subarray(0, 4).toString() === '%PDF',
+    'stored bytes are not the PDF',
+  )
+  assert(
+    audit.some((a) => a.action === 'document.uploaded'),
+    'upload not audited',
+  )
+  await page.getByText('1 of 5 required approved · 2 awaiting review', { exact: false }).waitFor() // transcript now pending
+})
+
+await test('GATE documents: student replaces a document — new version, history kept, audited', async (page) => {
+  await studentDocs(page)
+  const bank = card(page, 'Bank Statement')
+  await bank.getByRole('button', { name: 'Upload replacement' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByText('What to fix:').waitFor()
+  await dialog.locator('input[type=file]').setInputFiles(pdf('bank-statement-october.pdf', 'v2'))
+  await dialog.getByRole('button', { name: 'Upload new version' }).click()
+  await page.getByText('Version 2 uploaded').waitFor()
+  await bank.getByText('version 2', { exact: false }).waitFor()
+  await bank.getByText('Uploaded', { exact: true }).waitFor()
+  assert(
+    (await bank.getByText('Ask your bank for a stamped statement.').count()) === 0,
+    'old review comment shown on the new version',
+  )
+  await bank.getByRole('button', { name: /History/ }).click()
+  await bank.getByText('v1', { exact: true }).waitFor()
+  await bank.getByText('v2', { exact: true }).waitFor()
+  assert(
+    audit.some((a) => a.action === 'document.replaced' && a.version === 2),
+    'replacement not audited',
+  )
+  assert(
+    calls.some((c) => c.path === '/rest/v1/rpc/replace_document'),
+    'replace_document RPC not used',
+  )
+})
+
+await test('GATE documents: student previews through an audited short-lived signed URL', async (page) => {
+  await studentDocs(page)
+  await card(page, 'Passport').getByRole('button', { name: 'Preview Passport' }).click()
+  const frame = page.getByRole('dialog').locator('iframe')
+  await frame.waitFor()
+  const src = await frame.getAttribute('src')
+  assert(/\/storage\/v1\/object\/sign\/student-documents\/.+token=/.test(src), `not a signed URL: ${src}`)
+  const auth = calls.findLast((c) => c.path === '/rest/v1/rpc/authorize_document_access')
+  assert(auth?.body.p_purpose === 'view', 'preview did not request an audited grant first')
+  const sign = calls.findLast((c) => c.method === 'POST' && c.path.startsWith('/storage/v1/object/sign/'))
+  assert(sign.body.expiresIn === 60, `signed URL expiry should be 60s, was ${sign.body.expiresIn}`)
+  assert(
+    audit.some((a) => a.action === 'document.viewed'),
+    'view not audited',
+  )
+  await shot(page, 'documents-preview')
+})
+
+await test('GATE documents: student downloads through an audited signed URL', async (page) => {
+  await studentDocs(page)
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    card(page, 'Passport').getByRole('button', { name: 'Download Passport' }).click(),
+  ])
+  assert(
+    /passport\.pdf$/.test(download.suggestedFilename()),
+    `unexpected filename ${download.suggestedFilename()}`,
+  )
+  assert(
+    audit.some((a) => a.action === 'document.downloaded'),
+    'download not audited',
+  )
+})
+
+await test("documents: signing another student's file path fails (mock mirrors the storage rule)", async (page) => {
+  await studentDocs(page)
+  const other = db.documents.find((d) => d.student_id !== studentId())
+  const status = await page.evaluate(
+    async ({ path, url }) => {
+      const key = Object.keys(localStorage).find((k) => k.endsWith('-auth-token'))
+      const token = JSON.parse(localStorage.getItem(key)).access_token
+      const r = await fetch(`${url}/storage/v1/object/sign/student-documents/${path}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{"expiresIn":60}',
+      })
+      return r.status
+    },
+    { path: other.file_path, url: 'http://127.0.0.1:54399' },
+  )
+  assert(status >= 400, "signing another student's file must fail")
+})
+
+await test('documents: delete is allowed only where the status permits, and is audited', async (page) => {
+  await studentDocs(page)
+  await page.getByRole('button', { name: 'Upload document' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel(/^Category/).selectOption('other')
+  await dialog.getByLabel(/^Document type/).selectOption({ label: 'Other Document' })
+  await dialog.getByLabel(/^Document name/).fill('Scholarship letter')
+  await dialog.locator('input[type=file]').setInputFiles(pdf('scholarship.pdf'))
+  await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
+  await card(page, 'Scholarship letter').waitFor()
+  await card(page, 'Scholarship letter').getByRole('button', { name: 'Delete Scholarship letter' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click()
+  await page.getByText('Document deleted').waitFor()
+  await card(page, 'Scholarship letter').waitFor({ state: 'detached' })
+  assert(
+    audit.some((a) => a.action === 'document.deleted'),
+    'delete not audited',
+  )
+  assert(
+    calls.some(
+      (c) =>
+        c.method === 'DELETE' &&
+        c.path === '/storage/v1/object/student-documents' &&
+        c.body.prefixes?.[0]?.includes('scholarship'),
+    ),
+    'stored file not removed',
+  )
+})
+
+await test('documents: error state with retry, and deep link highlight from a notification', async (page) => {
+  await demoLogin(page, 'Student')
+  await page.waitForURL(`${APP}/app`)
+  failures.set('documents', 3) // initial try + 2 automatic retries
+  await page.goto(`${APP}/app/documents`)
+  await page.getByText("We couldn't load this").first().waitFor()
+  await page.getByRole('button', { name: 'Try again' }).first().click()
+  await card(page, 'Passport').waitFor()
+  const bankId = db.documents.find(
+    (d) => d.student_id === studentId() && d.document_type_id === 'type-bank_statement',
+  ).id
+  await page.goto(`${APP}/app/documents?doc=${bankId}`)
+  await page.locator(`#doc-${bankId}.ring-2`).waitFor()
+})
+
+await test('GATE admin: the uploaded document appears in the review queue and can be previewed', async (page) => {
+  await demoLogin(page, 'Admin')
+  await page.waitForURL(`${APP}/admin`)
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Documents' }).click()
+  await page.getByRole('heading', { name: 'Document review queue' }).waitFor()
+  const row = page.getByRole('row').filter({ hasText: 'Final-Transcript-Oct-e.pdf' })
+  await row.getByText('Nimali Fernando').waitFor()
+  await row.getByText('Uploaded').waitFor()
+  await page.getByRole('row').filter({ hasText: 'Kavindu Jayasinghe' }).first().waitFor()
+  await shot(page, 'admin-review-queue')
+  await row.getByRole('button', { name: /Preview/ }).click()
+  await page.getByRole('dialog').locator('iframe').waitFor()
+  assert(
+    audit.some((a) => a.action === 'document.viewed' && a.actor === 'admin@demo.portal'),
+    'admin preview not audited',
+  )
+})
+
+await test('counselor queue lists assigned students only', async (page) => {
+  await demoLogin(page, 'Counselor')
+  await page.waitForURL(`${APP}/admin`)
+  await page.goto(`${APP}/admin/documents`)
+  await page.getByText('Documents from your assigned students').waitFor()
+  await page.getByRole('row').filter({ hasText: 'Kavindu Jayasinghe' }).first().waitFor()
+})
+
+await test('instructor cannot open the document queue', async (page) => {
+  await demoLogin(page, 'Instructor')
+  await page.waitForURL(`${APP}/admin`)
+  await page.goto(`${APP}/admin/documents`)
+  await page.waitForURL(`${APP}/unauthorized`)
+})
+
+// ------------------------------------------------------------------ onboarding
+async function loginAs(page, email) {
+  await page.goto(`${APP}/login`)
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel(/^Password( \*)?$/).fill('Demo#Pass123')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+}
+
+await test('onboarding: a new student is guided through 6 steps, can resume, and sees completion', async (page) => {
+  await loginAs(page, 'new.student@demo.portal')
+  await page.waitForURL(`${APP}/app/onboarding`)
+  await page.getByRole('heading', { name: '1. Personal information' }).waitFor()
+  await page.getByLabel(/^Date of birth/).fill('2001-03-09')
+  await page.getByLabel(/^Gender/).selectOption('Female')
+  await page.getByLabel(/^Nationality/).fill('Kenyan')
+  await page.getByRole('button', { name: 'Save and continue' }).click()
+  await page.getByRole('heading', { name: '2. Education' }).waitFor()
+  await page.getByLabel(/^Institution/).fill('Nairobi National University (demo)')
+  await page.getByLabel(/^Qualification/).fill("Bachelor's degree")
+  await page.getByLabel(/^Start date/).fill('2019-09-01')
+  await page.getByLabel(/^End date/).fill('2018-01-01')
+  await page.getByRole('button', { name: 'Save and continue' }).click()
+  await page.getByText('End date must be after the start date').waitFor()
+  await page.getByLabel(/^End date/).fill('2023-07-01')
+  await page.getByRole('button', { name: 'Save and continue' }).click()
+  await page.getByRole('heading', { name: '3. English test' }).waitFor()
+  // resume: reload lands on the same step
+  await page.reload()
+  await page.getByRole('heading', { name: '3. English test' }).waitFor()
+  await page.getByRole('button', { name: "I haven't taken a test yet" }).click()
+  await page.getByRole('heading', { name: '4. Passport' }).waitFor()
+  await page.getByLabel(/^Passport number/).fill('ke1234567')
+  await page.getByLabel(/^Passport expiry date/).fill('2030-05-01')
+  await page.getByRole('button', { name: 'Save and continue' }).click()
+  await page.getByRole('heading', { name: '5. Study preferences' }).waitFor()
+  await page.getByText('United Kingdom', { exact: true }).click()
+  await page.getByLabel(/^Study level/).selectOption('postgraduate')
+  await page.getByLabel(/^Preferred intake/).selectOption({ index: 1 })
+  await page.getByLabel(/^Subjects/).fill('Public Health, Data Science')
+  await page.getByRole('button', { name: 'Save and continue' }).click()
+  await page.getByRole('heading', { name: '6. Application goals' }).waitFor()
+  await page.getByRole('button', { name: 'Back' }).click()
+  await page.getByRole('heading', { name: '5. Study preferences' }).waitFor()
+  await page.getByRole('button', { name: 'Save and continue' }).click()
+  await page
+    .getByLabel(/^What do you want to achieve/)
+    .fill('Study public health in the UK and work for an international NGO.')
+  await page.getByRole('button', { name: 'Finish', exact: true }).click()
+  await page.getByText(/Your profile is \d+% complete\./).waitFor()
+  const s = db.students.find((x) => x.profile_id === users.get('new.student@demo.portal').id)
+  assert(s.onboarding_completed && s.onboarding_step === 7, 'onboarding not saved as complete')
+  assert(
+    db.student_profiles.find((p) => p.student_id === s.id)?.passport_number === 'KE1234567',
+    'passport not normalised and saved',
+  )
+  assert(s.preferred_subjects.join('|') === 'Public Health|Data Science', 'subjects not saved as a list')
+  await shot(page, 'onboarding-complete')
+  await page.getByRole('link', { name: 'Go to my dashboard' }).click()
+  await page.waitForURL(`${APP}/app`)
+  assert(
+    (await page.getByText('Finish setting up your profile').count()) === 0,
+    'setup banner should be gone',
+  )
+})
+
+await test('onboarding: empty states for a student with no documents or applications', async (page) => {
+  await loginAs(page, 'new.student@demo.portal')
+  await page.waitForURL(`${APP}/app`)
+  await page.goto(`${APP}/app/documents`)
+  await page.getByText('No documents yet').waitFor()
+  await page.getByText('No active applications yet').waitFor()
+})
+
+// ------------------------------------------------------------------ profile
+await test('profile: editing updates the completion percentage and missing list', async (page) => {
+  await demoLogin(page, 'Student')
+  await page.waitForURL(`${APP}/app`)
+  await page.goto(`${APP}/app/profile`)
+  const aside = page.getByRole('complementary', { name: 'Profile completion' })
+  await aside.getByText('88%').waitFor()
+  await aside.getByRole('link', { name: 'Home address' }).waitFor()
+  await page.getByRole('button', { name: 'Edit contact' }).click()
+  const contact = page.locator('#contact')
+  await contact.getByLabel(/^Address/).fill('12 Demo Lane')
+  await contact.getByRole('button', { name: 'Save' }).click()
+  await page.getByText('Contact details saved').waitFor()
+  await aside.getByText('94%').waitFor()
+  assert(
+    (await aside.getByRole('link', { name: 'Home address' }).count()) === 0,
+    'address still listed as missing',
+  )
+  await page.getByRole('button', { name: 'Edit emergency contact' }).click()
+  const em = page.locator('#emergency')
+  await em.getByLabel(/^Full name/).fill('Demo Guardian')
+  await em.getByLabel(/^Relationship/).fill('Parent')
+  await em.getByLabel(/^Phone/).fill('+94 77 000 9999')
+  await em.getByRole('button', { name: 'Save' }).click()
+  await aside.getByText('100%').waitFor()
+  await aside.getByText('Everything universities need is here.').waitFor()
+  await shot(page, 'profile')
+})
+
+await test('profile: add and remove a work experience record; English score rules enforced', async (page) => {
+  await demoLogin(page, 'Student')
+  await page.waitForURL(`${APP}/app`)
+  await page.goto(`${APP}/app/profile`)
+  const work = page.locator('#work')
+  await work.getByRole('button', { name: 'Add' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel(/^Company/).fill('Lanka Health Analytics')
+  await dialog.getByLabel(/^Position/).fill('Data Analyst')
+  await dialog.getByLabel(/^Start date/).fill('2022-09-01')
+  await dialog.getByText('I work here now').click()
+  await dialog.getByRole('button', { name: 'Add role' }).click()
+  await work.getByText('Data Analyst').waitFor()
+  await work.getByRole('button', { name: 'Delete Data Analyst' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Remove' }).click()
+  await work.getByText('No roles yet').waitFor()
+  const english = page.locator('#english')
+  await english.getByRole('button', { name: 'Add' }).click()
+  const d2 = page.getByRole('dialog')
+  await d2.getByLabel(/^Overall score/).fill('9.5')
+  await d2.getByLabel(/^Test date/).fill('2026-01-10')
+  await d2.getByRole('button', { name: 'Add test result' }).click()
+  await d2.getByText('IELTS Academic scores are 0–9').waitFor()
+})
+
+await test(
+  'mobile 375px: documents page and upload dialog fit the screen',
+  async (page) => {
+    await studentDocs(page)
+    assert(await noOverflow(page), 'documents page overflows at 375px')
+    await page.getByRole('button', { name: 'Upload document' }).click()
+    await page.getByRole('dialog').getByText('Choose a file or drag it here').waitFor()
+    assert(await noOverflow(page), 'upload dialog overflows at 375px')
+    await shot(page, 'mobile-documents-upload')
+  },
+  { width: 375, height: 812 },
+)
+
+await test(
+  'mobile 375px: onboarding and profile fit the screen',
+  async (page) => {
+    await demoLogin(page, 'Student')
+    await page.waitForURL(`${APP}/app`)
+    await page.goto(`${APP}/app/profile`)
+    await page.getByRole('heading', { name: 'My profile' }).waitFor()
+    assert(await noOverflow(page), 'profile overflows at 375px')
+    await page.goto(`${APP}/app/onboarding`)
+    await page.getByText(/Your profile is \d+% complete\./).waitFor()
+    assert(await noOverflow(page), 'onboarding overflows at 375px')
+  },
+  { width: 375, height: 812 },
+)
 
 await browser.close()
 vite.kill()

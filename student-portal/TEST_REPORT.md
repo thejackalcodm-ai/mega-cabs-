@@ -99,6 +99,80 @@ Bugs found and fixed while testing Phase 2:
 - `npm run seed` through the Supabase API (logic verified on Postgres; API path not run).
 - `npm run verify:live` results on your project.
 
+## Phase 3 — Onboarding, profile, documents, checklists (2026-10-30)
+
+### Status of the items you asked me to confirm first
+
+| Item                                            | Result                                                                                      |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| GitHub Actions run #2 (Phase 2)                 | **Green**: both jobs, every step, including 36 browser tests and the seed idempotency check |
+| `supabase db push` (incl. 0012) on your project | **Not reported** — your message still contained the placeholder                             |
+| `npm run seed` on your project                  | **Not reported**                                                                            |
+| `npm run verify:live` on your project           | **Not reported** — no output to compare yet                                                 |
+
+### Automated results
+
+| Suite                                                   | Result                     | Runs against                                                                                                                                                                                                 |
+| ------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm run build`, `npm run lint`, `npm run format:check` | PASS                       | —                                                                                                                                                                                                            |
+| Unit tests (`npm test`)                                 | **54 / 54**                | pure functions: file validation, document rules (expiry, delete/replace permissions, checklist counts), profile schemas (IELTS/PTE/TOEFL score ranges, dates, passport), auth schemas, errors, roles, tables |
+| Database / RLS suite                                    | **161 / 161**              | **real PostgreSQL 16 + pgTAP**, all migrations, Supabase platform stub                                                                                                                                       |
+| Seed idempotency                                        | PASS (50 tables unchanged) | real PostgreSQL 16                                                                                                                                                                                           |
+| Browser tests (`npm run e2e`)                           | **54 / 54**, 0 page errors | real app in Chromium against the **mocked** Supabase API                                                                                                                                                     |
+
+### What each kind of test proves
+
+**A. Real database (pgTAP, PostgreSQL 16)** — these are the security proofs:
+
+- Stored documents are unreadable (so no signed URL can be issued) **even by their owner** without a grant from `authorize_document_access()`; with a grant exactly that one file becomes readable; grants expire.
+- A student cannot obtain a grant for another student's document; a counselor can for assigned students only.
+- Every view and download writes an audit row (actor, document, version); uploads, replacements and deletes are audited too (deletes by trigger, so service-role deletes are covered).
+- Deletes only through `delete_document()`: approved / under-review documents can't be deleted by students; direct `DELETE` on `documents` is refused; files still referenced by a version can't be deleted from storage; unreferenced leftovers can be cleaned up by their owner.
+- Replacement creates a new version, keeps history and now clears the previous review (migration 0014).
+- Disallowed MIME types and files over 10 MB are rejected by table constraints; uploads must follow `{student_id}/{category}/…`.
+- Mutation check: replacing the grant check with `true` makes 5 tests fail.
+
+**B. Browser tests against the mocked API** (`e2e/mock-supabase.mjs`) — UI behaviour only, **not** security:
+| Gate / requirement | Test |
+|---|---|
+| **Student uploads** a document | stored under `{student_id}/education/{uuid}-Final-Transcript-Oct-e.pdf` (sanitised from `Final Transcript (Oct) é.pdf`), real PDF bytes stored, card shows _Uploaded_, checklist updates |
+| **Student replaces** a document | version 2 created via `replace_document`, history lists v1 and v2, the old reviewer comment no longer appears as current feedback |
+| **Student previews** | iframe uses a storage _signed_ URL; the app requested an audited grant first; URL expiry is 60 s |
+| **Student downloads** | browser download of `passport.pdf`; audited grant requested with purpose _download_ |
+| **Admin sees it in the review queue** | `/admin/documents` lists the new transcript for Nimali Fernando; preview works and is audited |
+| Delete only where allowed | approved / under-review cards have no Delete or Replace; an uploaded document is deleted, its file removed |
+| File validation | `.exe` refused; executable renamed `.pdf` refused (content check); 10 MB+ refused; PNG/JPEG mismatch refused; nothing reaches storage |
+| Reviewer feedback | reason, required action and reviewer comments shown on a resubmission-required document |
+| Checklist | per-application checklist with automatic % (20% → stays 20% with 2 awaiting review after upload) |
+| Onboarding | new student redirected to the wizard; validation; saves each step; **resume after reload**; skip; back; finishes with "Your profile is 81% complete." and the missing list |
+| Profile | editing contact + emergency contact moves completion 88% → 94% → 100% and empties the missing list; add/remove work experience; IELTS range enforced |
+| Loading / error / empty states | error state with _Try again_ recovers (after automatic retries); empty documents + empty checklist for a new student; skeletons while loading |
+| Roles | counselor queue shows assigned students; instructor gets _not authorized_ on the queue |
+| Mobile 375 px | documents, upload dialog, profile, onboarding: no horizontal scroll (fixed a checklist-card overflow found by this test) |
+
+**C. Only a real Supabase project can prove** — covered by `npm run verify:live` (48 checks, up from 32) or manual steps below:
+
+- Supabase Storage actually enforces the object policies (signing, download, upload into another folder, delete).
+- Signed URLs work and **expire** (verify:live requests a 1-second URL and checks it fails after 3 s).
+- Public URLs fail for every file; bucket MIME and size limits are applied by the Storage API.
+- Real upload → replace → download (older version) → delete cycle with an audit row for each step.
+- Auth emails (verification, reset) arrive and their links work.
+
+### Manual steps for your project (≈10 minutes)
+
+1. `npm run seed`, then `npm run verify:live` — every line should read PASS. Send me the output.
+2. With `VITE_ENABLE_DEMO_LOGIN=true`, run `npm run dev` and sign in as **Student**.
+3. Documents → **Upload document** → Education → Transcript → pick a real PDF → Upload. Expect "Document uploaded".
+4. Click **Preview** on it. In the browser devtools Network tab, the file URL must contain `/object/sign/` and `token=`. Copy that URL, wait 90 seconds, open it in a new tab: it must fail.
+5. Replace it (**Replace**) with another PDF: the card shows _version 2_; **History** shows v1 and v2.
+6. **Download** v1 from History: the original file downloads.
+7. Sign out, sign in as **Admin** → Documents: the transcript is listed for Nimali Fernando.
+8. In the Supabase SQL editor run
+   `select action, created_at from audit_logs where entity_type = 'document' order by created_at desc limit 10;`
+   Expect `document.uploaded`, `document.viewed`, `document.replaced`, `document.downloaded`, `document.viewed` (admin).
+9. Storage → `student-documents` → open any file's "Get URL" / public URL: it must return an error (bucket is private).
+10. Sign up a brand-new account with a real email: the verification email arrives, the link signs you in and starts the onboarding wizard.
+
 ## Section F — end-to-end checklist
 
 | Flow                                             | Status                                                        |

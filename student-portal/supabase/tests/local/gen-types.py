@@ -127,7 +127,9 @@ for f in funcs:
     elif f["retrel"]:
         ret = f'Database["public"]["Tables"]["{f["retrel"]}"]["Row"]' + ("[]" if f["setof"] else "")
     else:
-        ret = ("undefined" if f["ret"] == "void" else ts_scalar(f["ret"])) + ("[]" if f["setof"] else "")
+        base = f["ret"][:-2] if f["ret"].endswith("[]") else f["ret"]
+        arr = "[]" if f["ret"].endswith("[]") else ""
+        ret = ("undefined" if base == "void" else ts_scalar(base) + arr) + ("[]" if f["setof"] else "")
     L.append(f"      {f['name']}: {{\n        Args: {argstr}\n        Returns: {ret}\n      }}")
 L.append("    }\n    Enums: {")
 for e in enums: L.append(f"      {e['name']}: " + " | ".join(json.dumps(x) for x in e["labels"]))

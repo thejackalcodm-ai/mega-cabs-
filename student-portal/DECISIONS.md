@@ -106,3 +106,31 @@ Decisions made during the build, with the reason for each. Newest at the bottom 
   by `npm run verify:live`.
 - **Uploads are validated three times**: extension + declared MIME type + leading-byte signature in
   the browser (`src/lib/files.ts`), bucket MIME/size limits, and table check constraints.
+
+## Phase 3
+
+- **Every document read requires an audited grant.** Logging downloads from the client could be
+  skipped, so the storage read policy for `student-documents` now requires a row in
+  `document_access_grants` (2-minute window) for that exact object. The only way to get one is
+  `authorize_document_access()`, which checks access and writes the `document.viewed` /
+  `document.downloaded` audit entry in the same transaction. The app then signs a 60-second URL.
+  This applies to staff as well, so reviewer access is audited too.
+- **Deletes go through `delete_document()`** (status rule + audit trigger). The direct delete
+  policy was removed. Files that belong to a document version can't be removed from storage
+  directly; once the rows are deleted the files become unreferenced and the owner can remove them.
+- **Replacing a document starts a fresh review** (migration 0014): the current reviewer, comment
+  and review time are cleared; the previous feedback stays in the review history.
+- **Upload order**: file to storage first, then the document row (whose insert trigger records
+  version 1 and the audit entry). If the row insert fails the file is removed.
+- **Custom document types** use the "Other document" type plus a free-text name
+  (`custom_type_name`), so students can't create new global types.
+- **One set of section forms** (`src/features/profile/forms.tsx`) and save functions
+  (`ProfileSaves.ts`) serve both the onboarding wizard and the profile page.
+- **Onboarding**: new students are sent to the wizard once; "Finish later" returns to the
+  dashboard with a "continue setup" card. Education, English test and passport can be skipped
+  (students often don't have them yet); progress is saved after every step and resumed from
+  `students.onboarding_step`.
+- **Profile completion stays in the database** (`profile_completion()`); the UI never recomputes it.
+- **The mock API grew into a small in-memory PostgREST/Storage stand-in** so the browser tests can
+  drive uploads, replacements, previews and downloads. It deliberately mirrors the grant rule, but
+  it is not evidence of security; that's pgTAP plus `verify:live`.

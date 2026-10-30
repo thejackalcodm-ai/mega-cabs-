@@ -82,22 +82,170 @@ async function main() {
   const del = await a.from('documents').delete().eq('student_id', bId).select()
   check("[1] student cannot delete another student's documents", (del.data?.length ?? 0) === 0)
 
-  // 2. storage
+  // 2. storage — the highest-risk area: every check runs as a real signed-in student with the anon key
+  const pdfBytes = (tag: string) =>
+    new Blob([`%PDF-1.4\n% verify-live ${tag}\n%%EOF\n`], { type: 'application/pdf' })
+  const auditCount = async (action: string, entityId: string) =>
+    (
+      await admin
+        .from('audit_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('action', action)
+        .eq('entity_id', entityId)
+    ).count ?? 0
   const signed = await a.storage.from('student-documents').createSignedUrl(bDoc.file_path, 60)
   check("[2] student cannot create a signed URL for another student's file (exact path)", !!signed.error)
   const dl = await a.storage.from('student-documents').download(bDoc.file_path)
   check("[2] student cannot download another student's file", !!dl.error)
+  const otherGrant = await a.rpc('authorize_document_access', {
+    p_document_id: bDoc.id,
+    p_purpose: 'download',
+  })
+  check("[2] student cannot obtain an access grant for another student's document", !!otherGrant.error)
+  const noGrant = await a.storage.from('student-documents').createSignedUrl(aDoc.file_path, 60)
+  check('[2] even her own stored document cannot be signed without an audited grant', !!noGrant.error)
+  const grant = await a.rpc('authorize_document_access', { p_document_id: aDoc.id, p_purpose: 'view' })
   const own = await a.storage.from('student-documents').createSignedUrl(aDoc.file_path, 60)
   const ownFetch = own.data ? await fetch(own.data.signedUrl) : null
   check(
-    '[2] student can open their own file via a short-lived signed URL',
-    ownFetch?.status === 200,
+    '[2] after authorize_document_access, her own file opens via a 60-second signed URL',
+    !grant.error && ownFetch?.status === 200,
     `status=${ownFetch?.status}`,
   )
+  check('[2] the view was written to the audit log', (await auditCount('document.viewed', aDoc.id)) > 0)
+  const short = await a.storage.from('student-documents').createSignedUrl(aDoc.file_path, 1)
+  await new Promise((r) => setTimeout(r, 3000))
+  const expired = short.data ? await fetch(short.data.signedUrl) : null
+  check(
+    '[2] a signed URL stops working after it expires',
+    (expired?.status ?? 0) >= 400,
+    `status=${expired?.status}`,
+  )
+  for (const [label, path] of [
+    ['own', aDoc.file_path],
+    ["another student's", bDoc.file_path],
+  ] as const) {
+    const pub = await fetch(`${url}/storage/v1/object/public/student-documents/${path}`)
+    check(`[8] public URL to ${label} file is refused`, pub.status >= 400, `status=${pub.status}`)
+  }
   const planted = await a.storage
     .from('student-documents')
-    .upload(`${bId}/identity/planted.pdf`, new Blob(['%PDF-1.4']), { contentType: 'application/pdf' })
+    .upload(`${bId}/identity/${crypto.randomUUID()}-planted.pdf`, pdfBytes('planted'), {
+      contentType: 'application/pdf',
+    })
   check("[2] student cannot upload into another student's folder", !!planted.error)
+  const html = await a.storage
+    .from('student-documents')
+    .upload(
+      `${aId}/other/${crypto.randomUUID()}-page.pdf`,
+      new Blob(['<script>alert(1)</script>'], { type: 'text/html' }),
+      { contentType: 'text/html' },
+    )
+  check('[2] the bucket rejects disallowed file types', !!html.error)
+  const big = await a.storage
+    .from('student-documents')
+    .upload(
+      `${aId}/other/${crypto.randomUUID()}-big.pdf`,
+      new Blob([new Uint8Array(10 * 1024 * 1024 + 1)], { type: 'application/pdf' }),
+      { contentType: 'application/pdf' },
+    )
+  check('[2] the bucket rejects files over 10 MB', !!big.error)
+
+  // upload → replace → download → delete, each audited
+  const types = (await admin.from('document_types').select('id, key, category').eq('key', 'other').single())
+    .data!
+  const path1 = `${aId}/other/${crypto.randomUUID()}-verify-live.pdf`
+  const up = await a.storage
+    .from('student-documents')
+    .upload(path1, pdfBytes('v1'), { contentType: 'application/pdf' })
+  const row = await a
+    .from('documents')
+    .insert({
+      student_id: aId,
+      document_type_id: types.id,
+      category: 'other',
+      custom_type_name: 'verify-live test',
+      file_path: path1,
+      file_name: 'verify-live.pdf',
+      file_size: 40,
+      mime_type: 'application/pdf',
+      status: 'approved',
+    })
+    .select()
+    .single()
+  check(
+    '[2] student can upload a document to her own folder',
+    !up.error && !row.error,
+    up.error?.message ?? row.error?.message,
+  )
+  const testDoc = row.data
+  if (testDoc) {
+    check(
+      '[5] a student-inserted document starts as "uploaded" even if she sends "approved"',
+      testDoc.status === 'uploaded',
+      `status=${testDoc.status}`,
+    )
+    check('[audit] upload was audited', (await auditCount('document.uploaded', testDoc.id)) > 0)
+    const path2 = `${aId}/other/${crypto.randomUUID()}-verify-live-v2.pdf`
+    await a.storage
+      .from('student-documents')
+      .upload(path2, pdfBytes('v2'), { contentType: 'application/pdf' })
+    const rep = await a.rpc('replace_document', {
+      p_document_id: testDoc.id,
+      p_file_path: path2,
+      p_file_name: 'verify-live-v2.pdf',
+      p_file_size: 40,
+      p_mime_type: 'application/pdf',
+    })
+    const versions =
+      (await a.from('document_versions').select('version').eq('document_id', testDoc.id)).data ?? []
+    check(
+      '[2] replacement adds version 2 and keeps version 1',
+      !rep.error && versions.length === 2,
+      rep.error?.message ?? `versions=${versions.length}`,
+    )
+    check('[audit] replacement was audited', (await auditCount('document.replaced', testDoc.id)) > 0)
+    const v1 = await a.rpc('authorize_document_access', {
+      p_document_id: testDoc.id,
+      p_purpose: 'download',
+      p_version: 1,
+    })
+    const v1url = await a.storage
+      .from('student-documents')
+      .createSignedUrl(path1, 60, { download: 'verify-live.pdf' })
+    const v1fetch = v1url.data ? await fetch(v1url.data.signedUrl) : null
+    check(
+      '[2] an earlier version can still be downloaded (with a grant)',
+      !v1.error && v1fetch?.status === 200,
+      `status=${v1fetch?.status}`,
+    )
+    check('[audit] download was audited', (await auditCount('document.downloaded', testDoc.id)) > 0)
+    const del = await a.rpc('delete_document', { p_document_id: testDoc.id })
+    const removed = del.data ? await a.storage.from('student-documents').remove(del.data) : null
+    check(
+      '[2] student can delete a document that is not approved / under review; files are removed',
+      !del.error && !removed?.error && (removed?.data?.length ?? 0) === 2,
+      del.error?.message ?? removed?.error?.message,
+    )
+    check('[audit] delete was audited', (await auditCount('document.deleted', testDoc.id)) > 0)
+  }
+  const approved = (
+    await admin
+      .from('documents')
+      .select('id')
+      .eq('student_id', aId)
+      .eq('status', 'approved')
+      .limit(1)
+      .maybeSingle()
+  ).data
+  if (approved) {
+    const delApproved = await a.rpc('delete_document', { p_document_id: approved.id })
+    check('[2] student cannot delete an approved document', !!delApproved.error)
+  }
+  // clean up anything a failed run may have left behind
+  const leftovers = (await admin.storage.from('student-documents').list(`${aId}/other`)).data ?? []
+  const stray = leftovers.filter((f) => f.name.includes('verify-live')).map((f) => `${aId}/other/${f.name}`)
+  if (stray.length) await admin.storage.from('student-documents').remove(stray)
 
   // 3/5/6/9 escalation and integrity
   const role = await a
@@ -153,10 +301,6 @@ async function main() {
   ]) {
     check(`[7] anonymous request returns nothing from ${table}`, (await count(anon, table)) <= 0)
   }
-
-  // 8. buckets private
-  const pub = await fetch(`${url}/storage/v1/object/public/student-documents/${bDoc.file_path}`)
-  check('[8] public URL to a stored document is refused', pub.status >= 400, `status=${pub.status}`)
 
   const failed = results.filter((r) => !r.ok)
   for (const r of results)

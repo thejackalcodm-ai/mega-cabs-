@@ -24,7 +24,8 @@ const email = z
   .min(1, 'Enter your email address')
   .email('Enter a valid email address')
 
-const name = (field: string) =>
+/** Person-name rule shared by registration and the profile. */
+export const name = (field: string) =>
   z
     .string()
     .trim()

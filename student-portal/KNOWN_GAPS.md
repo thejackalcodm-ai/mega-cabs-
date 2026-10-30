@@ -22,8 +22,9 @@ Honest list of what is not done or not verified. Updated at the end of every pha
   Migrations, the RLS suite and the full seed were verified on PostgreSQL 16 + pgTAP with a stub of
   the Supabase platform schemas. Please run `npm run seed` then `npm run verify:live` and share the
   output.
-- **Whether your `supabase db push` succeeded is unconfirmed** (the Phase 2 request still had the
-  placeholder text). If it failed, paste the error.
+- **Your results for `supabase db push` (now including 0013 and 0014), `npm run seed` and
+  `npm run verify:live` are unconfirmed**: both the Phase 2 and Phase 3 requests still had the
+  placeholder text. Phase 3 changes storage policies, so please run `verify:live` before relying on it.
 - **Auth flows were browser-tested against a mocked Supabase API**, not real Supabase Auth. Real
   email delivery, the verification link and the password-recovery link have not been exercised.
 - **No deployed URL yet.** Vercel deployment needs your Vercel account (README §2).
@@ -33,9 +34,24 @@ Honest list of what is not done or not verified. Updated at the end of every pha
   and that object RLS denies cross-student reads; requesting a public URL against a real project
   (expected: 400/404) is a manual check listed in TEST_REPORT.md.
 
+## Phase 3 specifics
+
+- **Orphaned files**: if an upload succeeds but saving the document row fails, the app tries to
+  remove the file. If that also fails (e.g. the network drops), the file stays in the student's
+  folder, unreferenced. The storage policy lets the owner see and delete such files, but no
+  scheduled clean-up exists yet.
+- **Malware scanning** is not implemented. Files are checked for type, size and leading bytes only.
+  For production, add a scanning step (e.g. a Storage webhook to a scanner) before staff open files.
+- **DOCX files can't be previewed** in the browser; staff and students download them instead.
+- Students can replace a document that is _under review_ (it goes back to _uploaded_). Approved
+  documents need a counselor; this matches the spec's "delete/replace where permitted".
+- The review queue is read-only until Phase 4 (no approve/reject buttons are shown).
+- Expired documents are shown as expired from their expiry date; the stored status changes only
+  when `expire_documents()` runs (not scheduled yet).
+
 ## Behaviour to be aware of
 
-- Sidebar entries for modules in Phases 3–8 open a "being built" page; nothing on them is active.
+- Sidebar entries for modules in Phases 4–8 open a "being built" page; nothing on them is active.
 - Header search goes to a placeholder search page until Phase 8.
 - Demo lesson videos use a public CC0 sample clip; replace `lessons.video_ref` with real hosted videos.
 - The seed uses Supabase's admin API, which assigns user ids itself; re-runs match users by email.

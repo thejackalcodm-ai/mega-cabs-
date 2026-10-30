@@ -47,14 +47,15 @@ export const STUDENT_NAV: NavGroup[] = [
   {
     items: [
       { label: 'Dashboard', path: '', icon: LayoutDashboard },
-      { label: 'My Profile', path: 'profile', icon: UserRound, phase: 3 },
+      { label: 'My Profile', path: 'profile', icon: UserRound },
+      { label: 'Set up profile', path: 'onboarding', icon: UserRound, hidden: true },
     ],
   },
   {
     label: 'Study abroad',
     items: [
       { label: 'My Applications', path: 'applications', icon: Send, phase: 5 },
-      { label: 'Documents', path: 'documents', icon: FileText, phase: 3 },
+      { label: 'Documents', path: 'documents', icon: FileText },
       { label: 'Universities', path: 'universities', icon: Building2, phase: 5 },
     ],
   },
@@ -93,7 +94,7 @@ export const ADMIN_NAV: NavGroup[] = [
     items: [
       { label: 'Students', path: 'students', icon: Users, roles: STUDENT_MANAGERS, phase: 4 },
       { label: 'Applications', path: 'applications', icon: Send, roles: STUDENT_MANAGERS, phase: 5 },
-      { label: 'Documents', path: 'documents', icon: FileCheck2, roles: STUDENT_MANAGERS, phase: 4 },
+      { label: 'Documents', path: 'documents', icon: FileCheck2, roles: STUDENT_MANAGERS },
       { label: 'Universities', path: 'universities', icon: Building2, roles: ADMIN_ROLES, phase: 5 },
     ],
   },

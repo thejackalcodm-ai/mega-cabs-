@@ -163,3 +163,45 @@ export const COUNTRIES = [
   'Zimbabwe',
   'Other',
 ] as const
+
+export const STUDY_DESTINATIONS = [
+  'United Kingdom',
+  'Ireland',
+  'Canada',
+  'Australia',
+  'New Zealand',
+  'United States',
+  'Germany',
+  'Netherlands',
+] as const
+
+export const STUDY_LEVELS = [
+  { value: 'foundation', label: 'Foundation' },
+  { value: 'diploma', label: 'Diploma' },
+  { value: 'undergraduate', label: "Undergraduate (bachelor's)" },
+  { value: 'postgraduate', label: "Postgraduate (master's)" },
+  { value: 'phd', label: 'PhD / research' },
+] as const
+
+export const GENDERS = ['Female', 'Male', 'Non-binary', 'Prefer not to say'] as const
+
+export const ENGLISH_TESTS = [
+  { value: 'ielts', label: 'IELTS Academic', min: 0, max: 9, step: 0.5 },
+  { value: 'pte', label: 'PTE Academic', min: 10, max: 90, step: 1 },
+  { value: 'toefl', label: 'TOEFL iBT', min: 0, max: 120, step: 1, sectionMax: 30 },
+  { value: 'other', label: 'Other test', min: 0, max: 999, step: 0.5 },
+] as const
+
+const INTAKE_MONTHS = ['January', 'February', 'July', 'September'] as const
+const MONTH_INDEX = { January: 0, February: 1, July: 6, September: 8 } as const
+
+/** The next `count` common intake labels after `today`, e.g. "September 2027". */
+export function upcomingIntakes(today = new Date(), count = 6): string[] {
+  const out: string[] = []
+  for (let year = today.getFullYear(); out.length < count; year++) {
+    for (const m of INTAKE_MONTHS) {
+      if (new Date(year, MONTH_INDEX[m], 1) > today && out.length < count) out.push(`${m} ${year}`)
+    }
+  }
+  return out
+}

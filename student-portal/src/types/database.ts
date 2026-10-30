@@ -625,6 +625,51 @@ export type Database = {
           },
         ]
       }
+      document_access_grants: {
+        Row: {
+          id: string
+          profile_id: string
+          document_id: string
+          file_path: string
+          purpose: string
+          expires_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          profile_id: string
+          document_id: string
+          file_path: string
+          purpose: string
+          expires_at: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          profile_id?: string
+          document_id?: string
+          file_path?: string
+          purpose?: string
+          expires_at?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_access_grants_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_access_grants_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_requirements: {
         Row: {
           id: string
@@ -2763,6 +2808,10 @@ export type Database = {
         Args: { s: Database["public"]["Enums"]["application_status"] }
         Returns: string
       }
+      authorize_document_access: {
+        Args: { p_document_id: string; p_purpose?: string; p_version?: number }
+        Returns: { file_path: string; file_name: string; mime_type: string; version: number }[]
+      }
       can_access_student: {
         Args: { p_student_id: string }
         Returns: boolean
@@ -2803,6 +2852,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      delete_document: {
+        Args: { p_document_id: string }
+        Returns: string[]
+      }
       get_learning_analytics: {
         Args: { p_student_id?: string }
         Returns: Json
@@ -2813,6 +2866,10 @@ export type Database = {
       }
       has_any_role: {
         Args: { p_roles: Database["public"]["Enums"]["app_role"][] }
+        Returns: boolean
+      }
+      has_document_grant: {
+        Args: { p_path: string }
         Returns: boolean
       }
       has_permission: {
@@ -2837,6 +2894,10 @@ export type Database = {
       }
       is_enrolled: {
         Args: { p_course_id: string }
+        Returns: boolean
+      }
+      is_referenced_document_object: {
+        Args: { p_path: string }
         Returns: boolean
       }
       is_staff: {
@@ -2886,6 +2947,10 @@ export type Database = {
       review_document: {
         Args: { p_document_id: string; p_action: Database["public"]["Enums"]["review_action"]; p_reason?: string; p_comment?: string; p_required_action?: string }
         Returns: Database["public"]["Tables"]["documents"]["Row"]
+      }
+      save_onboarding_progress: {
+        Args: { p_step: number; p_completed?: boolean }
+        Returns: undefined
       }
       start_quiz_attempt: {
         Args: { p_quiz_id: string }

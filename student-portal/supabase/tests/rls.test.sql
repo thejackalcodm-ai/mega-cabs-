@@ -108,6 +108,7 @@ insert into tests.fixtures values ('doc_alice_passport', '40000000-0000-0000-000
   ('doc_carol_passport', '40000000-0000-0000-0000-000000000004');
 insert into storage.objects (bucket_id, name, owner)
 select 'student-documents', file_path, null from public.documents;
+update public.documents set status = 'approved' where id = tests.id('doc_alice_passport');
 
 insert into public.invoices (id, student_id, title, due_date) values
   ('50000000-0000-0000-0000-000000000001', tests.id('stu_Alice'), 'Service fee', current_date + 14),
@@ -236,7 +237,16 @@ select is((select count(*)::int from storage.objects where bucket_id = 'student-
             and name = (select file_path from public.documents where id = tests.id('doc_bob_passport')) ), 0,
   '[2] alice cannot see bob storage object by exact path (signed URL creation is refused)');
 select is((select count(*)::int from storage.objects where bucket_id = 'student-documents'
-            and name like tests.id('stu_Alice') || '/%'), 2, '[2] alice can see her own storage objects');
+            and name like tests.id('stu_Alice') || '/%'), 0, '[2] even her own stored documents are unreadable without an audited access grant');
+select is((select count(*)::int from public.authorize_document_access(tests.id('doc_alice_passport'), 'download')), 1,
+  '[2] authorize_document_access issues a grant for her own document');
+select is((select count(*)::int from storage.objects where bucket_id = 'student-documents'
+            and name like tests.id('stu_Alice') || '/%'), 1, '[2] with a grant, exactly that one object becomes readable (signed URL can be created)');
+select throws_ok($$select * from public.authorize_document_access(tests.id('doc_bob_passport'))$$, '42501', null,
+  '[2] alice cannot obtain a grant for bob document');
+select throws_ok($$select * from public.authorize_document_access(tests.id('doc_alice_passport'), 'delete')$$, '22023', null,
+  '[2] only view/download grants exist');
+select is((select count(*)::int from public.document_access_grants), 0, '[2] grants table is not readable by clients');
 select is((select count(*)::int from storage.objects where bucket_id = 'message-attachments'), 0, '[2] alice cannot see bob message attachment');
 select throws_ok($$insert into storage.objects (bucket_id, name) values ('student-documents', tests.id('stu_Bob') || '/identity/x.pdf')$$,
   '42501', null, '[2] alice cannot upload into bob folder');
@@ -245,6 +255,14 @@ select throws_ok($$insert into storage.objects (bucket_id, name) values ('studen
 select lives_ok($$insert into storage.objects (bucket_id, name) values ('student-documents', tests.id('stu_Alice') || '/financial/new-bank.pdf')$$,
   '[2] alice can upload into her own folder');
 select is(tests.affected($$delete from storage.objects where name like tests.id('stu_Bob') || '/%'$$), 0, '[2] alice cannot delete bob objects');
+select is((select count(*)::int from storage.objects where name = tests.id('stu_Alice') || '/financial/new-bank.pdf'), 1,
+  '[2] an unreferenced upload (no document row yet) is visible to its owner for clean-up');
+select is(tests.affected($$delete from storage.objects where name = (select file_path from public.document_versions where document_id = tests.id('doc_alice_passport') and version = 1)$$), 0,
+  '[2] files that belong to a document cannot be deleted directly');
+-- deletes go through delete_document(): status rule + audit
+select throws_ok($$select public.delete_document(tests.id('doc_alice_passport'))$$, '42501', null, '[2] approved documents cannot be deleted by the student');
+select throws_ok($$select public.delete_document(tests.id('doc_bob_passport'))$$, '42501', null, '[2] alice cannot delete bob document');
+select is(tests.affected($$delete from public.documents where id = tests.id('doc_alice_bank')$$), 0, '[2] direct deletes on documents are not allowed');
 
 -- =============================================================================
 -- 3. No self role escalation
@@ -282,6 +300,8 @@ select throws_ok($$insert into public.documents (student_id, document_type_id, c
 select is((public.replace_document(tests.id('doc_alice_bank'), tests.id('stu_Alice') || '/financial/88888888-0000-0000-0000-000000000000-bank-v2.pdf',
   'bank-v2.pdf', 4096, 'application/pdf')).version, 2, '[5] replace_document bumps the version');
 select is((select count(*)::int from public.document_versions where document_id = tests.id('doc_alice_bank')), 2, '[5] version history keeps both versions');
+select is((select coalesce(reviewer_comment, '') || coalesce(rejection_reason, '') || coalesce(reviewer_id::text, '') from public.documents where id = tests.id('doc_alice_bank')), '',
+  '[5] a replacement starts a fresh review (old feedback stays in document_reviews)');
 
 -- Student cannot set application status beyond starting it.
 select throws_ok($$update public.applications set status = 'unconditional_offer' where id = tests.id('app_alice')$$, '42501', null,
@@ -356,7 +376,11 @@ select is((select count(*)::int from public.profiles where id = tests.id('carol'
 select is((select count(*)::int from public.documents where student_id = tests.id('stu_Carol')), 0, '[4] counselor cannot read unassigned documents');
 select is((select count(*)::int from public.applications where student_id = tests.id('stu_Carol')), 0, '[4] counselor cannot read unassigned applications');
 select is((select count(*)::int from storage.objects where name like tests.id('stu_Carol') || '/%'), 0, '[4] counselor cannot read unassigned storage objects');
-select is((select count(*)::int from storage.objects where name like tests.id('stu_Bob') || '/%'), 1, '[4] counselor can read assigned student storage');
+select is((select count(*)::int from storage.objects where name like tests.id('stu_Bob') || '/%'), 0, '[4] counselor needs a grant to read even an assigned student file');
+select lives_ok($$select * from public.authorize_document_access(tests.id('doc_bob_passport'), 'view')$$, '[4] counselor can authorize access to an assigned student document');
+select is((select count(*)::int from storage.objects where name like tests.id('stu_Bob') || '/%'), 1, '[4] ... and then read it');
+select throws_ok($$select * from public.authorize_document_access(tests.id('doc_carol_passport'))$$, '42501', null, '[4] counselor cannot authorize an unassigned student document');
+select throws_ok($$select public.delete_document(tests.id('doc_bob_passport'))$$, '42501', null, '[4] counselors cannot delete student documents');
 select throws_ok($$select public.review_document(tests.id('doc_carol_passport'), 'approved')$$, '42501', null, '[4] counselor cannot review unassigned student documents');
 select throws_ok($$update public.staff set permissions = '{students.view_all}' where profile_id = tests.id('counselor')$$, '42501', null,
   '[4] counselor cannot grant themselves extra permissions');
@@ -378,6 +402,21 @@ select is((select rejection_reason || ' | ' || required_action from public.docum
   'Scan is blurred | Upload a corrected replacement document', 'reason and required action stored on the document');
 select is((select count(*)::int from public.notifications where recipient_id = tests.id('bob') and type = 'document_rejected'), 1, 'student notified of rejection');
 select is((select count(*)::int from public.audit_logs where action = 'document.resubmission_required' and actor_id = tests.id('counselor')), 1, 'review audited with actor');
+select is((select count(*)::int from public.audit_logs where action = 'document.downloaded' and actor_id = tests.id('alice') and entity_id = tests.id('doc_alice_passport')), 1, '[audit] download by the student was audited');
+select is((select count(*)::int from public.audit_logs where action = 'document.viewed' and actor_id = tests.id('counselor') and entity_id = tests.id('doc_bob_passport')), 1, '[audit] view by the counselor was audited');
+select is((select count(*)::int from public.audit_logs where action = 'document.replaced' and entity_id = tests.id('doc_alice_bank')), 1, '[audit] replacement was audited');
+select is((select count(*)::int from public.audit_logs where action = 'document.uploaded' and entity_id = tests.id('doc_alice_bank')), 1, '[audit] upload was audited');
+-- grants expire
+update public.document_access_grants set expires_at = now() - interval '1 second';
+select tests.auth_as('alice');
+set local role authenticated;
+select is((select count(*)::int from storage.objects where name like tests.id('stu_Alice') || '/identity/%'), 0, '[2] expired grants no longer allow reading');
+-- student deletes an uploaded (not yet reviewed) document: allowed, files become removable, audited
+select is(cardinality(public.delete_document((select id from public.documents where file_name = 't.pdf'))), 1, '[2] student can delete a document that is not approved / under review');
+select is(tests.affected($$delete from storage.objects where name = $$ || quote_literal(tests.id('stu_Alice') || '/financial/new-bank.pdf')), 1,
+  '[2] the owner can delete an unreferenced upload (clean-up after a failed or deleted document)');
+reset role;
+select is((select count(*)::int from public.audit_logs where action = 'document.deleted' and actor_id = tests.id('alice')), 1, '[audit] delete was audited with the student as actor');
 select is((select count(*)::int from public.application_events where application_id = tests.id('app_bob') and status = 'conditional_offer'), 1, 'timeline event written');
 select is((select count(*)::int from public.notifications where recipient_id = tests.id('bob') and type = 'university_offer'), 1, 'offer notification written');
 select is((select count(*)::int from public.audit_logs where action = 'application.status_changed' and entity_id = tests.id('app_bob')), 1, 'status change audited');

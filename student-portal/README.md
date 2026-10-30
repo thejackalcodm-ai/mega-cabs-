@@ -4,11 +4,11 @@ A Supabase + React (Vite, TypeScript) SaaS platform for international students: 
 onboarding, secure document management, university applications, an LMS (courses, quizzes,
 assignments), payments, messaging and a separate admin/staff portal.
 
-> **Build status: Phase 2 of 8 complete.** Database (schema, RLS, storage, core functions), auth
-> (sign up, verify, login, logout, password reset, sessions), role-based routing, the student and
-> staff layouts, shared components, the demo login panel and the idempotent seed are done. Feature
-> modules (profile, documents, applications, LMS…) arrive in Phases 3–8 and currently show an honest
-> "being built" page. See [TEST_REPORT.md](TEST_REPORT.md) and [KNOWN_GAPS.md](KNOWN_GAPS.md).
+> **Build status: Phase 3 of 8 complete.** Database, auth, role-based routing, layouts, shared
+> components, demo seed, plus the onboarding wizard, the full student profile with completion
+> percentage, the secure document system (private storage, versions, audited previews/downloads,
+> status-aware delete) with per-application checklists, and a read-only staff review queue. Modules
+> for Phases 4–8 currently show an honest "being built" page. See [TEST_REPORT.md](TEST_REPORT.md) and [KNOWN_GAPS.md](KNOWN_GAPS.md).
 
 This folder lives inside the `mega-cabs-` repository; everything for the portal is under
 `student-portal/`. The Java project at the repo root is unrelated and untouched.
@@ -202,6 +202,16 @@ roles, never their own. Helper functions used by RLS: `current_app_role()`, `has
 | Instructor  | Courses they teach, and enrollments/submissions/attempts in those courses |
 | Admin       | All operational data; cannot change roles                                 |
 | Super Admin | Everything, including roles                                               |
+
+### How document files are accessed
+
+1. Upload: browser → Storage (`{student_id}/{category}/{uuid}-{name}`), then the `documents` row is
+   inserted (status forced to _uploaded_, version 1 recorded, audited).
+2. View / download: `authorize_document_access()` checks access, writes the audit entry and opens a
+   2-minute grant → the browser asks Storage for a 60-second signed URL. Without a grant, Storage
+   refuses to sign, even for the file's owner.
+3. Replace: new object + `replace_document()` → new version, history kept, review restarted.
+4. Delete: `delete_document()` (status rules, audited) → the now-unreferenced files are removed.
 
 ### Storage layout (all buckets private)
 

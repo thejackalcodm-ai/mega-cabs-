@@ -13,6 +13,7 @@ export interface CurrentUser {
   roles: AppRole[]
   primaryRole: AppRole | null
   studentId: string | null
+  onboarding: { step: number; completed: boolean } | null
   staffId: string | null
 }
 
@@ -25,7 +26,11 @@ export async function fetchCurrentUser(userId: string): Promise<CurrentUser> {
       .eq('id', userId)
       .single(),
     supabase.from('user_roles').select('role').eq('user_id', userId),
-    supabase.from('students').select('id').eq('profile_id', userId).maybeSingle(),
+    supabase
+      .from('students')
+      .select('id, onboarding_step, onboarding_completed')
+      .eq('profile_id', userId)
+      .maybeSingle(),
     supabase.from('staff').select('id').eq('profile_id', userId).maybeSingle(),
   ])
   const profile = unwrap(profileRes, 'account.profile')
@@ -44,6 +49,7 @@ export async function fetchCurrentUser(userId: string): Promise<CurrentUser> {
     roles,
     primaryRole: primaryRole(roles),
     studentId: student?.id ?? null,
+    onboarding: student ? { step: student.onboarding_step, completed: student.onboarding_completed } : null,
     staffId: staff?.id ?? null,
   }
 }

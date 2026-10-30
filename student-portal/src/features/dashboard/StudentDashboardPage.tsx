@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { ArrowRight, Bell, CheckCircle2 } from 'lucide-react'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
+import { ArrowRight, Bell, CheckCircle2, Sparkles } from 'lucide-react'
 import { useCurrentUser } from '@/app/providers/auth-context'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,6 +28,13 @@ export function StudentDashboardPage() {
     queryKey: ['notifications', 'recent'],
     queryFn: () => fetchRecentNotifications(5),
   })
+  const [params] = useSearchParams()
+  const onboarding = user.onboarding
+
+  // Brand-new students are guided straight into setup; "Finish later" brings them back here.
+  if (onboarding && !onboarding.completed && onboarding.step <= 1 && params.get('setup') !== 'later') {
+    return <Navigate to="/app/onboarding" replace />
+  }
 
   return (
     <>
@@ -36,6 +43,23 @@ export function StudentDashboardPage() {
         title={`${greeting()}, ${user.firstName}`}
         description="Here's where your study-abroad journey stands."
       />
+      {onboarding && !onboarding.completed && (
+        <Card className="mb-5 flex flex-col gap-3 border-primary/30 bg-primary-soft/50 p-5 sm:flex-row sm:items-center">
+          <Sparkles className="size-5 shrink-0 text-primary" aria-hidden />
+          <div className="flex-1">
+            <p className="font-semibold">Finish setting up your profile</p>
+            <p className="text-sm text-muted-foreground">
+              You&apos;re on step {Math.min(onboarding.step, 6)} of 6. It takes a few minutes and your
+              counselor needs it to start.
+            </p>
+          </div>
+          <Button asChild>
+            <Link to="/app/onboarding">
+              Continue setup <ArrowRight />
+            </Link>
+          </Button>
+        </Card>
+      )}
       <div className="grid gap-5 lg:grid-cols-5">
         <div className="lg:col-span-3">
           {completion.isPending ? (

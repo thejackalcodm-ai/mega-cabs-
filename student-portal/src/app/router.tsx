@@ -24,6 +24,20 @@ const StudentDashboardPage = named(
   'StudentDashboardPage',
 )
 const AdminDashboardPage = named(() => import('@/features/admin/AdminDashboardPage'), 'AdminDashboardPage')
+const ProfilePage = named(() => import('@/features/profile/ProfilePage'), 'ProfilePage')
+const OnboardingPage = named(() => import('@/features/onboarding/OnboardingPage'), 'OnboardingPage')
+const DocumentsPage = named(() => import('@/features/documents/DocumentsPage'), 'DocumentsPage')
+const DocumentQueuePage = named(() => import('@/features/admin/DocumentQueuePage'), 'DocumentQueuePage')
+
+/** Built pages by path; everything else in the nav shows its "being built" page. */
+const STUDENT_PAGES: Record<string, React.ReactNode> = {
+  profile: <ProfilePage />,
+  onboarding: <OnboardingPage />,
+  documents: <DocumentsPage />,
+}
+const ADMIN_PAGES: Record<string, React.ReactNode> = {
+  documents: <DocumentQueuePage />,
+}
 
 function Lazy() {
   return (
@@ -34,12 +48,17 @@ function Lazy() {
 }
 
 /** Index route + one route per nav item. Items with `roles` get their own guard on top of the portal guard. */
-function portalChildren(groups: NavGroup[], base: string, index: React.ReactNode): RouteObject[] {
+function portalChildren(
+  groups: NavGroup[],
+  base: string,
+  index: React.ReactNode,
+  pages: Record<string, React.ReactNode>,
+): RouteObject[] {
   const items = groups.flatMap((g) => g.items).filter((i) => i.path !== '')
   return [
     { index: true, element: index },
     ...items.map((item) => {
-      const page = <ComingSoonPage title={item.label} phase={item.phase} home={base} />
+      const page = pages[item.path] ?? <ComingSoonPage title={item.label} phase={item.phase} home={base} />
       return {
         path: item.path,
         element: item.roles ? <RequireRole roles={item.roles}>{page}</RequireRole> : page,
@@ -82,7 +101,12 @@ export const routes: RouteObject[] = [
                 />
               </RequireRole>
             ),
-            children: portalChildren(STUDENT_NAV, PORTALS.student.base, <StudentDashboardPage />),
+            children: portalChildren(
+              STUDENT_NAV,
+              PORTALS.student.base,
+              <StudentDashboardPage />,
+              STUDENT_PAGES,
+            ),
           },
           {
             path: PORTALS.admin.base,
@@ -96,7 +120,7 @@ export const routes: RouteObject[] = [
                 />
               </RequireRole>
             ),
-            children: portalChildren(ADMIN_NAV, PORTALS.admin.base, <AdminDashboardPage />),
+            children: portalChildren(ADMIN_NAV, PORTALS.admin.base, <AdminDashboardPage />, ADMIN_PAGES),
           },
         ],
       },
