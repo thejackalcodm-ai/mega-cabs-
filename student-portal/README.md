@@ -4,11 +4,30 @@ A Supabase + React (Vite, TypeScript) SaaS platform for international students: 
 onboarding, secure document management, university applications, an LMS (courses, quizzes,
 assignments), payments, messaging and a separate admin/staff portal.
 
-> **Build status: Phase 3 of 8 complete.** Database, auth, role-based routing, layouts, shared
-> components, demo seed, plus the onboarding wizard, the full student profile with completion
-> percentage, the secure document system (private storage, versions, audited previews/downloads,
-> status-aware delete) with per-application checklists, and a read-only staff review queue. Modules
-> for Phases 4–8 currently show an honest "being built" page. See [TEST_REPORT.md](TEST_REPORT.md) and [KNOWN_GAPS.md](KNOWN_GAPS.md).
+> **Build status: Phase 4 of 8 complete**: database, auth, role-based routing, onboarding,
+> student profile, secure document system, admin and counselor dashboards, student management and
+> the document review workspace. Modules for Phases 5–8 show an honest "being built" page. See
+> [TEST_REPORT.md](TEST_REPORT.md) and [KNOWN_GAPS.md](KNOWN_GAPS.md).
+
+### At a glance
+
+|                  |                                                                                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Requirements     | Node.js 20+ (22 recommended), npm, a Supabase project                                                                                               |
+| Install          | `npm ci`                                                                                                                                            |
+| Environment      | `cp .env.example .env`, then set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Project Settings → API: Project URL and the **publishable** key) |
+| Run locally      | `npm run dev` → http://localhost:5173                                                                                                               |
+| Production build | `npm run build` → `dist/` (not committed)                                                                                                           |
+| Deploy           | Vercel, root directory `student-portal` (see §2)                                                                                                    |
+
+### Security notes
+
+- Only `VITE_SUPABASE_URL` and the **publishable** (`sb_publishable_…`) / anon key go to the
+  browser. They are safe to expose: every request is checked by Row Level Security in the database.
+- The **secret** (`sb_secret_…`) / service-role key is used only by `npm run seed` and
+  `npm run verify:live` on your own machine and by the Edge Function on Supabase. Never put it in a
+  `VITE_` variable, in Vercel, or in Git.
+- `.env`, `.env.local` and `.env.*` are git-ignored; only `.env.example` (no values) is committed.
 
 This folder lives inside the `mega-cabs-` repository; everything for the portal is under
 `student-portal/`. The Java project at the repo root is unrelated and untouched.
@@ -29,8 +48,8 @@ This folder lives inside the `mega-cabs-` repository; everything for the portal 
    database password somewhere safe.
 2. When it is ready, open **Project Settings → API** and copy:
    - **Project URL**
-   - **anon public** key
-   - **service_role** key (secret — only for the seed script on your machine)
+   - **Publishable** key (`sb_publishable_…`; older projects: **anon public**)
+   - **Secret** key (`sb_secret_…`; older projects: **service_role**). Only for the seed script on your machine
 3. Note the **project ref** (the `xxxx` in `https://xxxx.supabase.co`).
 
 ### Step 2 — Push the database
@@ -98,10 +117,10 @@ Fill in:
 | Variable                    | Value                                 | Where it is used                                               |
 | --------------------------- | ------------------------------------- | -------------------------------------------------------------- |
 | `VITE_SUPABASE_URL`         | Project URL                           | Browser (safe)                                                 |
-| `VITE_SUPABASE_ANON_KEY`    | anon public key                       | Browser (safe; RLS protects data)                              |
+| `VITE_SUPABASE_ANON_KEY`    | publishable (or anon public) key      | Browser (safe; RLS protects data)                              |
 | `VITE_ENABLE_DEMO_LOGIN`    | `true` locally, `false` in production | Shows the demo login panel                                     |
 | `SUPABASE_URL`              | Project URL                           | Seed script only                                               |
-| `SUPABASE_SERVICE_ROLE_KEY` | service_role key                      | **Seed script only. Never in Vercel, never `VITE_`-prefixed.** |
+| `SUPABASE_SERVICE_ROLE_KEY` | secret (or service_role) key          | **Seed script only. Never in Vercel, never `VITE_`-prefixed.** |
 
 ### Step 4 — Auth settings in the Supabase dashboard
 
