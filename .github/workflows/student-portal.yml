@@ -1,0 +1,39 @@
+name: Student Portal
+
+on:
+  push:
+    paths: ["student-portal/**", ".github/workflows/student-portal.yml"]
+  pull_request:
+    paths: ["student-portal/**", ".github/workflows/student-portal.yml"]
+
+defaults:
+  run:
+    working-directory: student-portal
+
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: student-portal/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run build
+      - run: npm test -- --passWithNoTests
+
+  database:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start PostgreSQL 16 and install pgTAP
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-16-pgtap
+          sudo systemctl start postgresql
+      - name: Migrations + RLS / security suite
+        run: sudo -u postgres bash supabase/tests/run-local.sh
