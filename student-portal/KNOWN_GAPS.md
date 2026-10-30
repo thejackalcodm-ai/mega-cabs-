@@ -8,7 +8,6 @@ Honest list of what is not done or not verified. Updated at the end of every pha
 | ---------------------------------------------------------------------------------------------------------- | ----- |
 | Auth screens, route guards, layouts, demo login panel, seed script (`npm run seed`), generated DB types    | 2     |
 | Onboarding wizard, profile UI, document UI                                                                 | 3     |
-| Admin dashboard, student management, document review workspace, counselor dashboard                        | 4     |
 | University discovery, application UI, journey/next-action engine                                           | 5     |
 | LMS UI (player, quizzes, assignments, analytics, course builder)                                           | 6     |
 | Payments UI + provider abstraction, messaging UI + Realtime, notifications UI, calendar, support, settings | 7     |
@@ -45,13 +44,41 @@ Honest list of what is not done or not verified. Updated at the end of every pha
 - **DOCX files can't be previewed** in the browser; staff and students download them instead.
 - Students can replace a document that is _under review_ (it goes back to _uploaded_). Approved
   documents need a counselor; this matches the spec's "delete/replace where permitted".
-- The review queue is read-only until Phase 4 (no approve/reject buttons are shown).
 - Expired documents are shown as expired from their expiry date; the stored status changes only
   when `expire_documents()` runs (not scheduled yet).
 
+## Phase 4 specifics
+
+- **Hosted project state**: migrations 0001–0014 are applied on `pyiucgqgkhvdqyanzzgc`; 0015 and
+  0016 are not (they wait for your Phase 4 acceptance). The project has no users or data until
+  `npm run seed` runs. Until 0016 is applied, anonymous callers can still invoke SECURITY DEFINER
+  functions through `PUBLIC`. Each function refuses a null `auth.uid()` and the project holds no
+  data, but apply 0016 before seeding real data.
+- **Real-project checks are pending**: `npm run seed`, `npm run verify:live` and the Edge Function
+  deployment need your secret key / CLI login. Nothing in Phase 4 has been verified against
+  Supabase Auth, PostgREST or the Edge runtime yet. The browser tests use the mock API.
+- **The Edge Function's `handler.ts` is unit-tested, but `index.ts` (the Deno wiring) has not been
+  typechecked or run here** (no Deno or Edge runtime in this environment). Check the `verify:live`
+  Edge Function lines after deploying.
+- **No role-management screen.** Roles are changed only by a super admin (database-enforced); a UI
+  for it is planned with the Phase 8 settings and audit work. Use SQL as a super admin until then.
+- **Deactivation does not end existing sessions in Supabase Auth.** Every query a deactivated user
+  makes returns nothing or is refused (RLS), and the app shows "Your account is inactive", but
+  their JWT remains valid until it expires (1 hour by default).
+- **Email changes** for a student are not offered in the admin edit dialog (Supabase Auth owns the
+  email; the student changes it from Settings in Phase 7).
+- **The Messages tab** lists threads only; reading and replying arrive with the messaging centre
+  (Phase 7). The **Audit** tab shows the last 200 entries for the student; the full audit viewer
+  with filters and export is Phase 8.
+- **Advisor performance warnings** (`auth_rls_initplan` ×20, `multiple_permissive_policies` ×22)
+  are planned for the Phase 8 performance pass; `pg_trgm` stays in `public` because moving it
+  breaks the trigram indexes (needs a coordinated migration).
+- **Charts in dark mode**: the app has no dark theme yet; chart colours use the light tokens.
+- **Revenue** is shown one currency at a time; there is no FX conversion to a single total.
+
 ## Behaviour to be aware of
 
-- Sidebar entries for modules in Phases 4–8 open a "being built" page; nothing on them is active.
+- Sidebar entries for modules in Phases 5–8 open a "being built" page; nothing on them is active.
 - Header search goes to a placeholder search page until Phase 8.
 - Demo lesson videos use a public CC0 sample clip; replace `lessons.video_ref` with real hosted videos.
 - The seed uses Supabase's admin API, which assigns user ids itself; re-runs match users by email.
@@ -61,5 +88,5 @@ Honest list of what is not done or not verified. Updated at the end of every pha
   it daily (or call it from a scheduled Edge Function).
 - `notification_outbox` is written but not drained: no email/WhatsApp is sent until a sender is
   implemented.
-- Creating staff accounts from the admin UI will need an Edge Function holding the service role
-  key (Phase 4); until then staff come from the seed script.
+- Staff accounts can be created by a super admin from **Students → Add user** once the
+  `admin-create-user` Edge Function is deployed. Until then, staff come from the seed script.

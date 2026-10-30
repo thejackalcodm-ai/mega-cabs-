@@ -15,5 +15,10 @@
     "noUnusedParameters": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "supabase/seed/**/*.ts", "supabase/functions/**/handler.ts", "supabase/functions/**/*.test.ts"]
+  "include": [
+    "vite.config.ts",
+    "supabase/seed/**/*.ts",
+    "supabase/functions/**/handler.ts",
+    "supabase/functions/**/*.test.ts"
+  ]
 }

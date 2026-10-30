@@ -173,6 +173,96 @@ Bugs found and fixed while testing Phase 2:
 9. Storage → `student-documents` → open any file's "Get URL" / public URL: it must return an error (bucket is private).
 10. Sign up a brand-new account with a real email: the verification email arrives, the link signs you in and starts the onboarding wizard.
 
+## Phase 4 — Admin dashboard, student management, review workspace, counselors (2026-10-30)
+
+### Real-project status (as you asked: pending, not passed)
+
+| Item                                                     | Status                                                                                                                                                                                             |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Migrations 0001–0014 on project `pyiucgqgkhvdqyanzzgc`   | **Applied by me through the Supabase connector** after you chose that option. Each call returned success. 0015 and 0016 are **not** applied (they wait for your Phase 4 acceptance).               |
+| Supabase security / performance advisors after 0001–0014 | Run. Findings are listed under **C** below. One real issue (anon EXECUTE through `PUBLIC`) led to migration 0016.                                                                                  |
+| Read-only checks on the project                          | 52 public tables, **0 without RLS**, 117 policies, 4 buckets, **0 public**, 17 role-permission rows, 32 document types, 0 auth users (not seeded yet).                                             |
+| `npm run seed` on your project                           | **Pending** (needs your secret key)                                                                                                                                                                |
+| `npm run verify:live` on your project                    | **Pending**: now 48 + Phase 4 checks (see C). Until 0015 is applied the Phase 4 checks fail with "function does not exist", and the anon-RPC check fails until 0016 is applied. Both are expected. |
+
+### Automated results
+
+| Suite                                                   | Result                     | Runs against                                                                                                   |
+| ------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `npm run build`, `npm run lint`, `npm run format:check` | PASS                       | —                                                                                                              |
+| Unit tests (`npm test`)                                 | **64 / 64**                | pure functions, plus 10 tests of the Edge Function handler (`supabase/functions/admin-create-user/handler.ts`) |
+| Database / RLS suite                                    | **220 / 220**              | **real PostgreSQL 16 + pgTAP**, migrations 0001–0016, Supabase platform stub                                   |
+| Seed idempotency                                        | PASS (50 tables unchanged) | real PostgreSQL 16                                                                                             |
+| Browser tests (`npm run e2e`)                           | **68 / 68**, 0 page errors | real app in Chromium against the **mocked** Supabase API                                                       |
+
+### A. Mock-API evidence (browser tests): UI behaviour only, not security
+
+The mock (`e2e/mock-supabase.mjs`) imitates the new RPCs (`admin_dashboard_metrics`, `counselor_dashboard`,
+`review_document`, `assign_counselor`, `request_document`), the `student_directory` / `counselor_directory`
+views, a table-backed notifications store, `audit_logs` and the `admin-create-user` function. It shows that
+the UI calls the right things and renders the results. It proves nothing about RLS.
+
+| Requirement                               | Test                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **GATE** reject → see → replace → approve | Admin rejects the IELTS certificate with a reason and a required action (RPC arguments checked). The student sees both on the card and the dashboard notification, then uploads v2. The counselor gets a "version 2" notification. The admin approves v2, the earlier review stays in the history, and the student is notified. Audit trail = `document.rejected:admin → document.replaced:student → document.approved:admin`, in that order. |
+| Reason is mandatory                       | Reject with an empty reason shows "Give the student a reason" and **no** `review_document` call is made                                                                                                                                                                                                                                                                                                                                       |
+| Admin dashboard                           | Tiles and 6 charts come from one `admin_dashboard_metrics` call; "Total students" equals the mock's row count; table view toggle works                                                                                                                                                                                                                                                                                                        |
+| Counselor dashboard                       | Pending documents, attention list; an unassigned student never appears                                                                                                                                                                                                                                                                                                                                                                        |
+| Student list                              | Search by ID, counselor filter (incl. Unassigned); counselors see only their students and get "Student not found" for an unassigned one                                                                                                                                                                                                                                                                                                       |
+| Student detail                            | Profile, Applications, Documents, Learning, Payments, Messages and Audit tabs each load data; the Audit tab is admin-only                                                                                                                                                                                                                                                                                                                     |
+| Request a document                        | Validation, then the student is notified and the request is audited                                                                                                                                                                                                                                                                                                                                                                           |
+| Assign counselor                          | Counselor and student are both notified; audited with the admin as actor                                                                                                                                                                                                                                                                                                                                                                      |
+| Create user (Edge Function)               | Admin creates a student; duplicate email → friendly 409 message; admin is not offered staff roles; super admin creates a counselor; anonymous call → 401; no request mentions a service key                                                                                                                                                                                                                                                   |
+| Deactivate / reactivate                   | Deactivated student sees "Your account is inactive" on sign-in; reactivation restores access; both audited                                                                                                                                                                                                                                                                                                                                    |
+| Route guards                              | A student opening the review workspace → not authorized; a student calling `review_document` directly → 403                                                                                                                                                                                                                                                                                                                                   |
+| Mobile 375 px                             | Dashboard, students, student detail and review workspace have no horizontal scroll (fixed two grid overflows this test found)                                                                                                                                                                                                                                                                                                                 |
+
+### B. Real-database evidence (pgTAP on PostgreSQL 16): the security proofs
+
+- **Counselor scope**: a counselor sees only assigned students in `students`, `student_directory`, documents and metrics (`scope = 'assigned'`). For an unassigned student, `review_document`, `authorize_document_access` and `request_document` are refused. Instructors are refused the dashboards.
+- **A student calling `review_document`**, even on their own document, gets `42501`. The same goes for `admin_dashboard_metrics`, `counselor_dashboard`, `assign_counselor` and `log_admin_user_created`.
+- **Role changes**: an admin's `UPDATE`/`DELETE` on `user_roles` affects **0 rows**, for their own role and anyone else's, and the roles are unchanged afterwards. A super admin changing their own role → `42501`. A super admin may record creating staff; an admin may not.
+- **Deactivated users lose access**: a deactivated counselor sees 0 students, 0 directory rows, cannot review, cannot open documents and has no dashboard. A deactivated student cannot open their own documents or read their profile data.
+- **GATE in one transaction each**: reject without a reason → `22023`. Reject → the student reads the status, reason and required action. Replace → v2, the review fields are cleared and the counselor is notified. Approve → approved. Exactly one student notification per decision; the audit order is rejected → replaced → approved (now reliable thanks to `clock_timestamp()` in 0015).
+- **Counselor assignment** only via `assign_counselor` / `students.manage`, audited, both parties notified; assigning a non-counselor is refused.
+- **0016 function privileges**: anon can execute **no** function in `public`, authenticated cannot call trigger functions, internal functions stay revoked, and the RLS helpers and app RPCs stay callable. The three anon/trigger assertions **fail without 0016** (checked by removing it), so the test catches the hole the local stub had hidden.
+
+### C. Evidence only your Supabase project can give
+
+**Advisor findings on your project (after 0001–0014):**
+
+| Advisor                                                                   | Level | Count | Action                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------- | ----- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `anon_security_definer_function_executable`                               | WARN  | 66    | **Real gap, fixed in 0016.** 0010 revoked EXECUTE from `anon`, but functions are granted to `PUBLIC`, which anon inherits. Every function refuses a null `auth.uid()`, and the project holds no data, so nothing was exposed. [lint 0028](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable) |
+| `authenticated_security_definer_function_executable`                      | WARN  | 66    | By design: RLS helpers must be executable by signed-in users, and each RPC checks permissions inside. 0016 removes trigger functions from this list. [lint 0029](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable)                                                                 |
+| `function_search_path_mutable`                                            | WARN  | 7     | Fixed in 0016 (`set search_path = public`). [lint 0011](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable)                                                                                                                                                                                                |
+| `extension_in_public` (pg_trgm)                                           | WARN  | 1     | Left as is (moving it breaks the trigram indexes). See KNOWN_GAPS. [lint 0014](https://supabase.com/docs/guides/database/database-linter?lint=0014_extension_in_public)                                                                                                                                                                                  |
+| `rls_enabled_no_policy` (`document_access_grants`, `notification_outbox`) | INFO  | 2     | Intentional: only SECURITY DEFINER functions touch these tables.                                                                                                                                                                                                                                                                                         |
+| `auth_rls_initplan`                                                       | WARN  | 20    | Performance only (`auth.uid()` re-evaluated per row). Planned for the Phase 8 performance pass. [lint 0003](https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan)                                                                                                                                                       |
+| `multiple_permissive_policies`                                            | WARN  | 22    | Performance only (separate read and write policies). Phase 8.                                                                                                                                                                                                                                                                                            |
+| `unused_index`                                                            | INFO  | 97    | Expected on an empty database.                                                                                                                                                                                                                                                                                                                           |
+
+**`npm run verify:live` Phase 4 checks (need 0015 + seed; the last one needs 0016):**
+
+- Admin metrics cover every student; counselor metrics, dashboard and directory = assigned students only.
+- Counselor cannot review or open an unassigned student's document, and cannot assign counselors.
+- A student calling `review_document`, the dashboards, `assign_counselor` or `request_document` is refused.
+- Admin cannot change their own role or a student's, cannot grant or revoke roles; a super admin cannot change their own role; every role is unchanged afterwards.
+- Deactivated student and counselor (with **existing sessions**) lose access; an admin cannot change a staff account's status; restored afterwards.
+- **GATE on the real API**: reject without reason refused → reject with reason → student reads reason and required action → notified → replacement v2 → counselor notified → approve → student notified → audit order rejected:admin, replaced:student, approved:admin → both reviews kept. The test document, its files and notifications are removed afterwards.
+- Edge Function (SKIP until deployed): anonymous → 401, student → 403, admin creating staff → 403.
+- Anonymous callers cannot execute RPCs (fails until 0016 is applied).
+
+### Manual steps for your project
+
+1. After you accept Phase 4: apply 0015 and 0016 (I can do it through the connector, or run `supabase db push` after the `migration repair` in README §Migrations).
+2. `npm run seed`, then `npm run verify:live`. Send me the output.
+3. `supabase functions deploy admin-create-user`, then re-run `verify:live` so the Edge Function checks run instead of SKIP.
+4. In the app, as **Admin**: Documents → open a document → Reject with a reason. As **Student**: the card shows the reason and what to do; upload a replacement. As **Admin**: approve version 2. In the SQL editor:
+   `select action, actor_role, created_at from audit_logs order by created_at desc limit 5;` and
+   `select type, title, created_at from notifications order by created_at desc limit 5;`
+5. As **Admin**: Students → Add student with a real email you control. The "set a password" email arrives.
+
 ## Section F — end-to-end checklist
 
 | Flow                                             | Status                                                        |
@@ -180,7 +270,7 @@ Bugs found and fixed while testing Phase 2:
 | Registration, email verification, login, logout  | UI verified (mocked API); real Supabase Auth pending your run |
 | Role-based route access                          | PASS (browser, all 5 roles)                                   |
 | Profile editing + completion %                   | DB function tested; UI pending (Phase 3)                      |
-| Document upload / replace / review / signed URLs | DB + storage policies tested; UI pending (Phases 3–4)         |
+| Document upload / replace / review / signed URLs | DB tested; UI tested against mock; real project pending       |
 | Application creation + status timeline           | DB tested; UI pending (Phase 5)                               |
 | Enrollment, lesson completion, progress          | DB tested; UI pending (Phase 6)                               |
 | Quiz submission + server grading                 | DB tested; UI pending (Phase 6)                               |
@@ -188,5 +278,6 @@ Bugs found and fixed while testing Phase 2:
 | Notifications for key events                     | DB triggers tested; header counts live; UI pending (Phase 7)  |
 | Messaging                                        | Schema + RLS tested; unread count live; UI pending (Phase 7)  |
 | Payments + invoices                              | Schema + RLS tested; UI pending (Phase 7)                     |
-| Admin functions, reports, audit viewer           | Pending (Phases 4, 8)                                         |
+| Admin dashboard, student management, counselors  | DB tested; UI tested against mock; real project pending       |
+| Reports, global audit viewer                     | Pending (Phase 8)                                             |
 | Mobile 375 / 768 / 1280                          | Phase 2 screens PASS; full pass in Phase 8                    |

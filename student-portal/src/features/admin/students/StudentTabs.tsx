@@ -74,7 +74,7 @@ export function ProfileTab({ student }: { student: StudentSummary }) {
   const { account, student: s, details: d, education, english, work } = bundle.data
   return (
     <div className="grid gap-5 lg:grid-cols-3">
-      <div className="space-y-5 lg:col-span-2">
+      <div className="min-w-0 space-y-5 lg:col-span-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Personal details</CardTitle>

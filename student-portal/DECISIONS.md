@@ -134,3 +134,62 @@ Decisions made during the build, with the reason for each. Newest at the bottom 
 - **The mock API grew into a small in-memory PostgREST/Storage stand-in** so the browser tests can
   drive uploads, replacements, previews and downloads. It deliberately mirrors the grant rule, but
   it is not evidence of security; that's pgTAP plus `verify:live`.
+
+## Phase 4
+
+- **Creating users goes through an Edge Function, `admin-create-user`.** Creating an Auth user needs
+  the secret (service-role) key, and that key must never reach the browser. The options were:
+
+  1. a Postgres function: it cannot call the Auth admin API;
+  2. a separate server (e.g. a Vercel route): a second deployment that holds the secret;
+  3. an Edge Function: it runs on Supabase next to Auth, and the secret is already in its environment.
+
+  Option 3 adds no infrastructure and keeps the secret inside Supabase. The function checks the
+  caller with the caller's own JWT: active account; `students.manage` to create students; super
+  admin to create staff. Only then does it use the secret key, and only for `auth.admin.createUser`.
+  The role is set in `app_metadata`, which users cannot edit; the signup trigger reads it from
+  there. The audit row is written with the **caller's** JWT through `log_admin_user_created()`, so
+  `audit_logs.actor_id` is the real admin and not the service role. If that audit write fails, the
+  new user is deleted again, so no account exists without an audit entry. The logic sits in a pure
+  `handler.ts` with injected dependencies (10 unit tests); `index.ts` is only the Deno wiring.
+
+- **`verify_jwt = false` for that one function.** The function does its own, stricter check
+  (`auth.getUser` plus permission RPCs). The platform's JWT gate does not accept the new
+  `sb_publishable_` / `sb_secret_` keys. The function reads `SUPABASE_PUBLISHABLE_KEY` /
+  `SUPABASE_SECRET_KEY` and falls back to the legacy names.
+- **Role changes stay super-admin-only and never self-service.** No UI changes roles in Phase 4.
+  The database guard (`guard_user_roles`, Phase 1) is the control: an admin's update or delete
+  affects 0 rows, and a super admin changing their own role raises `42501`. pgTAP and
+  `verify:live` both test this.
+- **Dashboards are one RPC each** (`admin_dashboard_metrics()`, `counselor_dashboard()`), which
+  return jsonb. Each is a single round trip computed in SQL over the caller's visible students
+  (`can_access_student`), so counselors automatically get "their" numbers (`scope: 'assigned'`)
+  and the browser never counts rows. "Active students" means signed in within 30 days
+  (`last_seen_at`), not "account not deactivated".
+- **`student_directory` is a `security_invoker` view**, so RLS on the underlying tables still
+  applies: one query for the list with counts, and no client-side joins.
+- **Counselor assignment is a function, `assign_counselor()`**, gated by `students.manage`. It
+  validates that the target is an active counselor and writes the audit row and both
+  notifications in one transaction. The `students` update guard now also refuses `counselor_id`
+  changes without `students.manage`, so a plain `UPDATE` cannot bypass it.
+- **The review decision is one `review_document()` call**: status, review row, student
+  notification and audit row in one transaction. The UI requires a reason (at least 5 characters)
+  for reject and resubmission; the database requires a non-empty one too, so a direct API call
+  cannot skip it. The default required action is "Upload a corrected replacement document".
+- **Audit timestamps use `clock_timestamp()`.** Several audit rows written in one transaction used
+  to share `now()`, and the trail's order was arbitrary.
+- **Counselors are notified of uploads by a trigger, `notify_document_submitted`.** It fires on a
+  student's insert and on a version increase (replacement), and not on staff or service uploads.
+- **Migration 0016 removes EXECUTE from `PUBLIC`.** The Supabase security advisor on the real
+  project found that anon could still execute SECURITY DEFINER functions through `PUBLIC`. The
+  migration keeps each function's existing authenticated access explicitly, revokes trigger
+  functions from API roles and stops future functions defaulting to `PUBLIC`. Every later migration
+  must therefore `grant execute … to authenticated` for new RPCs, as 0015 already does.
+- **Migrations applied through the Supabase connector** get connector-assigned version numbers
+  (timestamps of when they were applied), not the file names. Before using `supabase db push` on
+  that project, mark the local files as applied (README → Migrations) so the CLI doesn't run them
+  twice.
+- **Charts** (Recharts) follow one set of rules: single series, one hue (`--primary`), no legend
+  (the card title names the series), bars of 24 px or less with 4 px rounded data ends, a hairline
+  grid, tooltips, and a table view for every chart. Revenue has one currency at a time, with a
+  picker when there are several, rather than a stacked or dual-axis chart.

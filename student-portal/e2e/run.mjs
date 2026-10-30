@@ -207,7 +207,7 @@ for (const [role, home, name, visible, hidden] of ROLES) {
       assert((await page.getByText('Farhan Siddiqui').count()) === 0, 'counselor sees unassigned student')
     }
     if (role === 'Instructor') await page.getByText('IELTS Academic Complete').waitFor()
-    if (role === 'Admin') await page.getByText('Farhan Siddiqui').waitFor()
+    if (role === 'Admin') await page.getByText('Total students').waitFor()
     await shot(page, `dashboard-${role.toLowerCase().replace(' ', '-')}`)
   })
 }
@@ -237,11 +237,15 @@ for (const [role, target] of DENY) {
   })
 }
 
-await test('allowed deep link: counselor opens /admin/students (coming soon page, no fake actions)', async (page) => {
+await test('allowed deep link: counselor opens /admin/students (their students, no admin actions)', async (page) => {
   await demoLogin(page, 'Counselor')
   await page.waitForURL(`${APP}/admin`)
   await page.goto(`${APP}/admin/students`)
-  await page.getByText('Students arrives in build phase 4').waitFor()
+  await page.getByRole('heading', { name: 'My students' }).waitFor()
+  assert(
+    (await page.getByRole('button', { name: /Add student/ }).count()) === 0,
+    'counselor offered Add student',
+  )
 })
 
 await test('signed-out visitor opening /app/documents is sent to login, then back after sign-in', async (page) => {
@@ -360,8 +364,11 @@ await test(
   async (page) => {
     await demoLogin(page, 'Admin')
     await page.waitForURL(`${APP}/admin`)
-    await page.getByText('Farhan Siddiqui').waitFor()
+    await page.getByText('Applications by status').waitFor()
     assert(await noOverflow(page), 'admin overflows at 375px')
+    await page.goto(`${APP}/admin/students`)
+    await page.getByText('Farhan Siddiqui').first().waitFor()
+    assert(await noOverflow(page), 'students table overflows at 375px')
     await page.getByRole('button', { name: 'Open menu' }).click()
     await page.getByRole('dialog').getByRole('link', { name: 'Audit log' }).waitFor()
     await shot(page, 'mobile-admin-drawer')
@@ -675,7 +682,7 @@ await test('GATE admin: the uploaded document appears in the review queue and ca
   await row.getByText('Uploaded').waitFor()
   await page.getByRole('row').filter({ hasText: 'Kavindu Jayasinghe' }).first().waitFor()
   await shot(page, 'admin-review-queue')
-  await row.getByRole('button', { name: /Preview/ }).click()
+  await row.getByRole('button', { name: /^Preview/ }).click()
   await page.getByRole('dialog').locator('iframe').waitFor()
   assert(
     audit.some((a) => a.action === 'document.viewed' && a.actor === 'admin@demo.portal'),
@@ -849,6 +856,353 @@ await test(
     await page.goto(`${APP}/app/onboarding`)
     await page.getByText(/Your profile is \d+% complete\./).waitFor()
     assert(await noOverflow(page), 'onboarding overflows at 375px')
+  },
+  { width: 375, height: 812 },
+)
+
+// ------------------------------------------------------------------ Phase 4: admin & counselor workspaces
+const sid = (email) => db.students.find((x) => x.profile_id === users.get(email).id).id
+const notesFor = (email, type) =>
+  db.notifications.filter((n) => n.recipient_id === users.get(email).id && n.type === type)
+
+await test('admin dashboard: tiles and charts come from admin_dashboard_metrics, with a table view', async (page) => {
+  await demoLogin(page, 'Admin')
+  await page.waitForURL(`${APP}/admin`)
+  const tile = page.getByText('Total students', { exact: true }).locator('xpath=../..')
+  await tile.getByText(String(db.students.length), { exact: true }).waitFor()
+  await page.getByText('Applications by status').waitFor()
+  assert(
+    calls.some((c) => c.path === '/rest/v1/rpc/admin_dashboard_metrics'),
+    'metrics RPC not called',
+  )
+  await page.getByRole('button', { name: 'Show Applications by status as a table' }).click()
+  await page.getByRole('table', { name: 'Applications by status' }).getByText('Documents required').waitFor()
+  await shot(page, 'admin-dashboard-metrics')
+})
+
+await test('counselor dashboard: assigned students only, documents waiting, attention list', async (page) => {
+  await demoLogin(page, 'Counselor')
+  await page.waitForURL(`${APP}/admin`)
+  await page.getByText('Documents waiting for you').waitFor()
+  await page.getByRole('link', { name: /Passport.*Kavindu Jayasinghe/ }).waitFor()
+  await page.getByText('Students who need attention').waitFor()
+  await page.getByRole('link', { name: /Nimali Fernando.*Northbridge/ }).waitFor()
+  assert((await page.getByText('Farhan Siddiqui').count()) === 0, 'unassigned student on counselor dashboard')
+  await shot(page, 'counselor-dashboard')
+})
+
+await test('counselor: students list is scoped and an unassigned student cannot be opened', async (page) => {
+  await demoLogin(page, 'Counselor')
+  await page.waitForURL(`${APP}/admin`)
+  await page.goto(`${APP}/admin/students`)
+  await page.getByRole('row').filter({ hasText: 'Kavindu Jayasinghe' }).waitFor()
+  assert(
+    (await page.getByRole('row').filter({ hasText: 'Farhan Siddiqui' }).count()) === 0,
+    'unassigned student listed',
+  )
+  await page.goto(`${APP}/admin/students/${sid('farhan.siddiqui@demo.portal')}`)
+  await page.getByText('Student not found').waitFor()
+  assert((await page.getByRole('button', { name: /Assign counselor/ }).count()) === 0, 'counselor can assign')
+})
+
+await test('students: admin searches and filters the directory', async (page) => {
+  await demoLogin(page, 'Admin')
+  await page.waitForURL(`${APP}/admin`)
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .getByRole('link', { name: 'Students', exact: true })
+    .click()
+  await page.getByRole('heading', { name: 'Students' }).waitFor()
+  await page.getByRole('row').filter({ hasText: 'Farhan Siddiqui' }).waitFor()
+  await page.getByLabel('Filter by counselor').selectOption('none')
+  await page.getByRole('row').filter({ hasText: 'Farhan Siddiqui' }).waitFor()
+  assert(
+    (await page.getByRole('row').filter({ hasText: 'Kavindu' }).count()) === 0,
+    'unassigned filter failed',
+  )
+  await page.getByLabel('Filter by counselor').selectOption('')
+  await page.getByPlaceholder('Search name, email, ID or phone').fill('STU-1002')
+  await page.getByRole('row').filter({ hasText: 'Kavindu Jayasinghe' }).waitFor()
+  assert((await page.getByRole('row').filter({ hasText: 'Nimali' }).count()) === 0, 'search failed')
+  await shot(page, 'admin-students')
+})
+
+await test('student detail: every tab loads real data; audit tab is admin-only', async (page) => {
+  await demoLogin(page, 'Admin')
+  await page.waitForURL(`${APP}/admin`)
+  await page.goto(`${APP}/admin/students/${studentId()}`)
+  await page.getByRole('heading', { name: 'Nimali Fernando' }).waitFor()
+  await page.getByText('Sri Lankan').waitFor()
+  const tab = (n) => page.getByRole('tab', { name: n, exact: true }).click()
+  await tab('applications')
+  await page.getByRole('tabpanel').getByText('Northbridge University').waitFor()
+  await tab('documents')
+  await page.getByRole('tabpanel').getByText('Bank Statement').waitFor()
+  await tab('learning')
+  await page.getByRole('tabpanel').getByText('IELTS Academic Complete').waitFor()
+  await tab('payments')
+  await page.getByText('No invoices').waitFor()
+  await tab('messages')
+  await page.getByText('No conversations yet').waitFor()
+  await tab('audit')
+  await page.getByRole('tabpanel').getByRole('table').waitFor()
+  await shot(page, 'admin-student-detail')
+})
+
+await test('student detail: admin requests a document (student notified, audited)', async (page) => {
+  await demoLogin(page, 'Admin')
+  await page.waitForURL(`${APP}/admin`)
+  await page.goto(`${APP}/admin/students/${studentId()}?tab=documents`)
+  await page.getByRole('button', { name: 'Request a document' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: 'Send request' }).click()
+  await dialog.getByText('Choose a document type').waitFor()
+  await dialog.getByLabel(/Document type/).selectOption({ label: 'TB Certificate' })
+  await dialog.getByLabel(/Message/).fill('Needed for the visa file by Friday.')
+  await dialog.getByRole('button', { name: 'Send request' }).click()
+  await page.getByText('Request sent').waitFor()
+  assert(
+    notesFor('student@demo.portal', 'document_required').some((n) => n.body.includes('Friday')),
+    'student not notified',
+  )
+  assert(
+    audit.some((a) => a.action === 'document.requested'),
+    'request not audited',
+  )
+})
+
+await test('assign counselor: admin assigns, both people are notified, the change is audited', async (page) => {
+  await demoLogin(page, 'Admin')
+  await page.waitForURL(`${APP}/admin`)
+  await page.goto(`${APP}/admin/students/${sid('farhan.siddiqui@demo.portal')}`)
+  await page.getByText('Counselor: Unassigned').waitFor()
+  await page.getByRole('button', { name: 'Assign counselor' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Counselor').selectOption(`staff-${users.get('counselor@demo.portal').id}`)
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await page.getByText('Counselor: Priya Raman').waitFor()
+  assert(notesFor('counselor@demo.portal', 'counselor_assigned').length === 1, 'counselor not notified')
+  assert(notesFor('farhan.siddiqui@demo.portal', 'counselor_assigned').length === 1, 'student not notified')
+  assert(
+    audit.some((a) => a.action === 'student.counselor_assigned' && a.actor === 'admin@demo.portal'),
+    'not audited',
+  )
+})
+
+await test('add student: created through the Edge Function with the admin JWT (no secret key in the browser)', async (page) => {
+  await demoLogin(page, 'Admin')
+  await page.waitForURL(`${APP}/admin`)
+  await page.goto(`${APP}/admin/students`)
+  await page.getByRole('button', { name: 'Add student' }).click()
+  const dialog = page.getByRole('dialog')
+  assert((await dialog.getByLabel(/^Role/).count()) === 0, 'admin offered staff roles')
+  await dialog.getByRole('button', { name: 'Create account' }).click()
+  await dialog.getByText('Enter your first name').waitFor()
+  await dialog.getByLabel(/First name/).fill('Tariq')
+  await dialog.getByLabel(/Last name/).fill('Hamid')
+  await dialog.getByLabel(/^Email( \*)?$/).fill('student@demo.portal')
+  await dialog.getByRole('button', { name: 'Create account' }).click()
+  await page.getByText('An account with this email already exists.').waitFor()
+  await dialog.getByLabel(/^Email( \*)?$/).fill('tariq.hamid@example.com')
+  await dialog.getByRole('button', { name: 'Create account' }).click()
+  await page.getByText('Account created').waitFor()
+  await page.getByRole('row').filter({ hasText: 'Tariq Hamid' }).waitFor()
+  const call = calls.filter((c) => c.path === '/functions/v1/admin-create-user').pop()
+  assert(
+    call.body.role === 'student' && call.body.email === 'tariq.hamid@example.com',
+    'wrong function payload',
+  )
+  assert(!JSON.stringify(calls).includes('service_role'), 'service role mentioned in a browser request')
+  assert(
+    audit.some((a) => a.action === 'user.created' && a.actor === 'admin@demo.portal'),
+    'creation not audited',
+  )
+})
+
+await test('super admin may create staff; admin is refused by the function', async (page) => {
+  const res = await fetch(`http://127.0.0.1:${MOCK_PORT}/functions/v1/admin-create-user`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'x@example.com', first_name: 'X', last_name: 'Y', role: 'counselor' }),
+  })
+  assert(res.status === 401, `anonymous call should be 401, got ${res.status}`)
+  await demoLogin(page, 'Super Admin')
+  await page.waitForURL(`${APP}/admin`)
+  await page.goto(`${APP}/admin/students`)
+  await page.getByRole('button', { name: 'Add user' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel(/First name/).fill('Lena')
+  await dialog.getByLabel(/Last name/).fill('Cho')
+  await dialog.getByLabel(/^Email( \*)?$/).fill('lena.cho@example.com')
+  await dialog.getByLabel(/^Role/).selectOption('counselor')
+  await dialog.getByRole('button', { name: 'Create account' }).click()
+  await page.getByText('Account created').waitFor()
+  assert(users.get('lena.cho@example.com')?.role === 'counselor', 'staff account not created')
+})
+
+await test('deactivate: admin deactivates a student, who then loses access; reactivation restores it', async (page) => {
+  await demoLogin(page, 'Admin')
+  await page.waitForURL(`${APP}/admin`)
+  await page.goto(`${APP}/admin/students/${sid('tariq.hamid@example.com')}`)
+  await page.getByRole('button', { name: 'Deactivate' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Deactivate' }).click()
+  await page.getByText('Account deactivated').waitFor()
+  await page.getByText('Deactivated', { exact: true }).waitFor()
+  assert(users.get('tariq.hamid@example.com').active === false, 'not deactivated')
+  assert(
+    audit.some((a) => a.action === 'profile.deactivated'),
+    'deactivation not audited',
+  )
+  const page2 = await page.context().browser().newPage()
+  await loginAs(page2, 'tariq.hamid@example.com')
+  await page2
+    .getByText(/inactive|deactivated/i)
+    .first()
+    .waitFor()
+  await page2.close()
+  await page.getByRole('button', { name: 'Reactivate' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Reactivate' }).click()
+  await page.getByText('Account reactivated').waitFor()
+  assert(users.get('tariq.hamid@example.com').active === true, 'not reactivated')
+})
+
+const ieltsId = () =>
+  db.documents.find((d) => d.student_id === studentId() && d.document_type_id === 'type-ielts').id
+
+await test('review workspace: reject and resubmission need a reason (nothing is sent without one)', async (page) => {
+  await demoLogin(page, 'Admin')
+  await page.waitForURL(`${APP}/admin`)
+  await page.goto(`${APP}/admin/documents/${ieltsId()}`)
+  await page.getByRole('heading', { name: 'IELTS Certificate' }).waitFor()
+  await page.locator('iframe').waitFor()
+  await page.getByText('Version history').waitFor()
+  const before = calls.filter((c) => c.path === '/rest/v1/rpc/review_document').length
+  await page.locator('label').filter({ hasText: 'Reject' }).click()
+  await page.getByRole('button', { name: 'Reject' }).click()
+  await page.getByText('Give the student a reason (at least 5 characters)').waitFor()
+  assert(
+    calls.filter((c) => c.path === '/rest/v1/rpc/review_document').length === before,
+    'RPC called without a reason',
+  )
+  await shot(page, 'review-workspace')
+})
+
+await test('GATE review: reject with reason → student sees it → uploads replacement → admin approves; notifications and audit for each step', async (page) => {
+  const reason = 'The scan is blurred and the TRF number is unreadable.'
+  const fix = 'Upload a clear colour scan of the full Test Report Form.'
+  // 1. admin rejects with a reason
+  await demoLogin(page, 'Admin')
+  await page.waitForURL(`${APP}/admin`)
+  await page.goto(`${APP}/admin/documents/${ieltsId()}`)
+  await page.locator('label').filter({ hasText: 'Reject' }).click()
+  await page.getByLabel(/Reason/).fill(reason)
+  await page.getByLabel(/What the student should do/).fill(fix)
+  await page.getByRole('button', { name: 'Reject' }).click()
+  await page.getByText('Document rejected').waitFor()
+  await page.getByText(`Reason: ${reason}`, { exact: false }).first().waitFor()
+  const review = calls.filter((c) => c.path === '/rest/v1/rpc/review_document').pop()
+  assert(
+    review.body.p_action === 'rejected' &&
+      review.body.p_reason === reason &&
+      review.body.p_required_action === fix,
+    'wrong RPC args',
+  )
+  assert(
+    notesFor('student@demo.portal', 'document_rejected').some((n) => n.body === reason),
+    'student not notified of rejection',
+  )
+
+  // 2. the student sees the reason and the required action, and uploads a replacement
+  const student = await page
+    .context()
+    .browser()
+    .newContext({ viewport: { width: 1280, height: 860 } })
+  const sp = await student.newPage()
+  await studentDocs(sp)
+  const ielts = card(sp, 'IELTS Certificate')
+  await ielts.getByText(reason).waitFor()
+  await ielts.getByText(fix).waitFor()
+  await sp.goto(`${APP}/app`)
+  await sp.getByText('IELTS Certificate rejected').waitFor()
+  await sp.goto(`${APP}/app/documents`)
+  await card(sp, 'IELTS Certificate').getByRole('button', { name: 'Upload replacement' }).click()
+  const dialog = sp.getByRole('dialog')
+  await dialog.getByText(fix).waitFor()
+  await dialog.locator('input[type=file]').setInputFiles(pdf('ielts-trf-clear.pdf', 'v2'))
+  await dialog.getByRole('button', { name: 'Upload new version' }).click()
+  await sp.getByText('Version 2 uploaded').waitFor()
+  await shot(sp, 'gate-student-replaced')
+  await student.close()
+  assert(
+    notesFor('counselor@demo.portal', 'document_uploaded').some((n) => n.body.includes('version 2')),
+    'counselor not notified of the new version',
+  )
+
+  // 3. the admin approves version 2
+  await page.reload()
+  await page.getByText('Version 2', { exact: false }).first().waitFor()
+  await page.getByText('ielts-trf-clear.pdf', { exact: false }).first().waitFor()
+  await page.locator('label').filter({ hasText: 'Approve' }).click()
+  await page.getByRole('button', { name: 'Approve' }).click()
+  await page.getByText('Document approved').waitFor()
+  await page.getByText(reason).first().waitFor() // previous review kept in the history
+  assert(
+    notesFor('student@demo.portal', 'document_approved').some(
+      (n) => n.title === 'IELTS Certificate approved',
+    ),
+    'student not notified of approval',
+  )
+
+  // audit trail: one entry per step, in order, with the right actor
+  const trail = audit.filter(
+    (a) =>
+      a.documentId === ieltsId() &&
+      ['document.rejected', 'document.replaced', 'document.approved'].includes(a.action),
+  )
+  assert(
+    trail.map((a) => `${a.action}:${a.actor}`).join(' ') ===
+      'document.rejected:admin@demo.portal document.replaced:student@demo.portal document.approved:admin@demo.portal',
+    `audit trail wrong: ${trail.map((a) => a.action).join(', ')}`,
+  )
+  await page.getByText('Audit trail').waitFor()
+  await page.getByText('document.approved').waitFor()
+  await shot(page, 'gate-admin-approved')
+})
+
+await test('student cannot open the review workspace; instructor cannot open student detail', async (page) => {
+  await demoLogin(page, 'Student')
+  await page.waitForURL(`${APP}/app`)
+  await page.goto(`${APP}/admin/documents/${ieltsId()}`)
+  await page.waitForURL(`${APP}/unauthorized`)
+  const r = await page.evaluate(async (port) => {
+    const key = Object.keys(localStorage).find((k) => k.includes('auth-token'))
+    const token = JSON.parse(localStorage.getItem(key)).access_token
+    const res = await fetch(`http://127.0.0.1:${port}/rest/v1/rpc/review_document`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ p_document_id: 'x', p_action: 'approved' }),
+    })
+    return res.status
+  }, MOCK_PORT)
+  assert(r === 403, `student review_document should be refused, got ${r}`)
+})
+
+await test(
+  'mobile 375px: students list, detail tabs and review workspace fit the screen',
+  async (page) => {
+    await demoLogin(page, 'Admin')
+    await page.waitForURL(`${APP}/admin`)
+    await page.getByText('Total students').waitFor()
+    assert(await noOverflow(page), 'dashboard overflows at 375px')
+    await page.goto(`${APP}/admin/students`)
+    await page.getByRole('heading', { name: 'Students' }).waitFor()
+    assert(await noOverflow(page), 'students overflow at 375px')
+    await page.goto(`${APP}/admin/students/${studentId()}`)
+    await page.getByRole('tab', { name: 'audit' }).waitFor()
+    assert(await noOverflow(page), 'student detail overflows at 375px')
+    await page.goto(`${APP}/admin/documents/${ieltsId()}`)
+    await page.getByText('Decision', { exact: true }).waitFor()
+    assert(await noOverflow(page), 'review workspace overflows at 375px')
   },
   { width: 375, height: 812 },
 )

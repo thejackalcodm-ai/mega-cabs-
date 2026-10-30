@@ -131,7 +131,11 @@ async function seed(t: SeedTarget) {
   for (const s of STUDENTS) studentId[s.key] = studentRows.find((r) => r.profile_id === profileId[s.key])!.id
   // recent sign-ins so "active students" is meaningful (3 students have not signed in for 6+ weeks)
   for (const [i, s] of STUDENTS.entries()) {
-    await t.update('profiles', { last_seen_at: daysFromNow(i < 7 ? -i : -45 - i) }, { eq: { id: profileId[s.key] } })
+    await t.update(
+      'profiles',
+      { last_seen_at: daysFromNow(i < 7 ? -i : -45 - i) },
+      { eq: { id: profileId[s.key] } },
+    )
   }
   log(`${STAFF.length} staff accounts and ${STUDENTS.length} students`)
 

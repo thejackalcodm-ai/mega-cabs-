@@ -21,7 +21,7 @@ import { reviewSchema, type ReviewValues } from '@/features/admin/students/schem
 import { downloadDocument, useStudentDocuments } from '@/features/documents/queries'
 import { DOCUMENT_CATEGORY_LABEL } from '@/lib/constants'
 import { formatBytes } from '@/lib/files'
-import { formatDate, formatDateTime, timeAgo } from '@/lib/format'
+import { formatDate, formatDateTime } from '@/lib/format'
 import { hasAnyRole } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { fetchDocumentForReview, fetchEntityAudit } from '@/services/admin'
@@ -139,11 +139,11 @@ function Workspace({
         }
       />
       <div className="grid gap-5 xl:grid-cols-5">
-        <div className="space-y-5 xl:col-span-3">
+        <div className="min-w-0 space-y-5 xl:col-span-3">
           <InlinePreview documentId={doc.id} version={shown} />
           <VersionHistory doc={doc} shown={shown} onShow={setVersion} />
         </div>
-        <div className="space-y-5 xl:col-span-2">
+        <div className="min-w-0 space-y-5 xl:col-span-2">
           <DecisionCard doc={doc} studentId={studentId} />
           <MetadataCard doc={doc} />
           <ReviewHistory doc={doc} />
@@ -250,8 +250,8 @@ function DecisionCard({ doc, studentId }: { doc: StudentDocument; studentId: str
       <CardContent>
         {doc.status === 'approved' && (
           <p className="mb-3 rounded-md border border-status-success/30 bg-status-success-soft px-3 py-2 text-sm text-status-success">
-            Version {doc.version} was approved {doc.reviewed_at ? timeAgo(doc.reviewed_at) : ''}. A new
-            decision replaces it.
+            Version {doc.version} was approved
+            {doc.reviewed_at ? ` on ${formatDateTime(doc.reviewed_at)}` : ''}. A new decision replaces it.
           </p>
         )}
         <form onSubmit={submit} className="space-y-4" noValidate>
@@ -325,7 +325,7 @@ function MetadataCard({ doc }: { doc: StudentDocument }) {
         <CardTitle className="text-base">Details</CardTitle>
       </CardHeader>
       <CardContent>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
           {rows.map(([k, v]) => (
             <div key={k} className="contents">
               <dt className="text-muted-foreground">{k}</dt>
@@ -448,11 +448,11 @@ function DocumentAudit({ documentId }: { documentId: string }) {
         ) : (
           <ol className="max-h-72 space-y-2 overflow-auto text-xs">
             {q.data.map((a) => (
-              <li key={a.id} className="flex justify-between gap-3">
-                <span className="font-mono">{a.action}</span>
-                <span className="shrink-0 text-muted-foreground">
+              <li key={a.id} className="min-w-0">
+                <p className="break-all font-mono">{a.action}</p>
+                <p className="text-muted-foreground">
                   {a.actorName ?? 'System'} · {formatDateTime(a.created_at)}
-                </span>
+                </p>
               </li>
             ))}
           </ol>

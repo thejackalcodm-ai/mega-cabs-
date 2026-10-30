@@ -53,7 +53,9 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const NAME = /^[\p{L}\p{M}' .-]{1,80}$/u
 const PHONE = /^\+?[0-9][0-9 ()-]{6,19}$/
 
-export function parseRequest(body: unknown): { ok: true; user: NewUser } | { ok: false; errors: Record<string, string> } {
+export function parseRequest(
+  body: unknown,
+): { ok: true; user: NewUser } | { ok: false; errors: Record<string, string> } {
   const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>
   const str = (k: string) => (typeof b[k] === 'string' ? (b[k] as string).trim() : '')
   const errors: Record<string, string> = {}
@@ -69,7 +71,10 @@ export function parseRequest(body: unknown): { ok: true; user: NewUser } | { ok:
   const role = (str('role') || 'student') as Role
   if (!ROLES.includes(role)) errors.role = 'Unknown role'
   if (Object.keys(errors).length) return { ok: false, errors }
-  return { ok: true, user: { email, firstName, lastName, phone, country, role, sendInvite: b.send_invite !== false } }
+  return {
+    ok: true,
+    user: { email, firstName, lastName, phone, country, role, sendInvite: b.send_invite !== false },
+  }
 }
 
 export async function handleCreateUser(body: unknown, deps: Deps): Promise<Response> {
@@ -78,13 +83,19 @@ export async function handleCreateUser(body: unknown, deps: Deps): Promise<Respo
   if (!caller.active) return { status: 403, body: { error: 'Your account is inactive.' } }
 
   const parsed = parseRequest(body)
-  if (!parsed.ok) return { status: 400, body: { error: 'Some details are not valid.', fields: parsed.errors } }
+  if (!parsed.ok)
+    return { status: 400, body: { error: 'Some details are not valid.', fields: parsed.errors } }
   const user = parsed.user
 
   if (user.role === 'student' ? !caller.canManageStudents : !caller.isSuperAdmin) {
     return {
       status: 403,
-      body: { error: user.role === 'student' ? "You don't have permission to create students." : 'Only a super admin can create staff accounts.' },
+      body: {
+        error:
+          user.role === 'student'
+            ? "You don't have permission to create students."
+            : 'Only a super admin can create staff accounts.',
+      },
     }
   }
 
@@ -99,7 +110,10 @@ export async function handleCreateUser(body: unknown, deps: Deps): Promise<Respo
     await deps.logCreated(created.id, user.role)
   } catch {
     await deps.deleteUser(created.id).catch(() => undefined)
-    return { status: 500, body: { error: 'The account could not be created (audit failed). Nothing was saved.' } }
+    return {
+      status: 500,
+      body: { error: 'The account could not be created (audit failed). Nothing was saved.' },
+    }
   }
 
   let invited = false

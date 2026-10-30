@@ -49,6 +49,7 @@ export function createMock() {
       last,
       confirmed: true,
       active: true,
+      lastSeen: daysAgo(1),
       ...extra,
     })
     return users.get(email)
@@ -108,6 +109,11 @@ export function createMock() {
     applications: [],
     universities: [{ id: 'uni-northbridge', name: 'Northbridge University', country: 'United Kingdom' }],
     programs: [{ id: 'prog-ds', name: 'MSc Data Science' }],
+    notifications: [],
+    enrollments: [],
+    invoices: [],
+    payments: [],
+    message_threads: [],
   }
   const REQUIREMENTS = {
     'United Kingdom': ['passport', 'transcript', 'ielts', 'offer_letter', 'bank_statement'],
@@ -262,10 +268,63 @@ export function createMock() {
   })
   addDoc(sMain, 'ielts', 'under_review')
   addDoc(sKav, 'passport', 'uploaded')
+  db.enrollments.push({
+    id: 'enr-1',
+    student_id: sMain.id,
+    course_id: 'c1',
+    status: 'active',
+    progress_percent: 40,
+    enrolled_at: daysAgo(14),
+    last_accessed_at: daysAgo(2),
+    completed_at: null,
+  })
+
+  db.notifications.push(
+    ...[
+      {
+        id: '1',
+        type: 'document_rejected',
+        title: 'Bank Statement needs resubmission',
+        body: 'The statement is older than 31 days.',
+        link: '/app/documents',
+        is_read: false,
+        created_at: daysAgo(1),
+      },
+      {
+        id: '2',
+        type: 'university_offer',
+        title: 'New offer from Westmere University',
+        body: 'You received a conditional offer.',
+        link: '/app/applications',
+        is_read: false,
+        created_at: daysAgo(2),
+      },
+      {
+        id: '3',
+        type: 'document_approved',
+        title: 'Passport approved',
+        body: null,
+        link: '/app/documents',
+        is_read: true,
+        created_at: daysAgo(9),
+      },
+    ].map((n) => ({ ...n, recipient_id: st.id })),
+  )
 
   const grants = [] // { profileId, path, expires }
   const failures = new Map() // table name -> number of upcoming GETs that return HTTP 500 (error-state tests)
   const audit = []
+  const notify = (recipientId, type, title, body, link) =>
+    db.notifications.push({
+      id: randomUUID(),
+      recipient_id: recipientId,
+      type,
+      title,
+      body,
+      link,
+      is_read: false,
+      created_at: now(),
+    })
   const tokens = new Map()
   const calls = []
 
@@ -292,6 +351,7 @@ export function createMock() {
     programs: () => true,
     document_versions: (me, r) => canAccessStudent(me, docOf(r.document_id)?.student_id),
     document_reviews: (me, r) => canAccessStudent(me, docOf(r.document_id)?.student_id),
+    notifications: (me, r) => r.recipient_id === me.id,
   }
   const isVisible = (table, me, row) =>
     visible[table] ? visible[table](me, row) : canAccessStudent(me, row.student_id)
@@ -305,6 +365,7 @@ export function createMock() {
       country: u.country ?? null,
       avatar_url: null,
       is_active: u.active,
+      last_seen_at: u.lastSeen ?? null,
       role: u.role,
     }))
   const tableRows = (name) => (name === 'profiles' ? profileRows() : db[name])
@@ -360,10 +421,91 @@ export function createMock() {
       })
     },
     my_threads: () => [],
+    student_directory: () =>
+      db.students.map((s) => {
+        const p = byId(s.profile_id)
+        const sp = db.student_profiles.find((x) => x.student_id === s.id)
+        const c = db.staff.find((x) => x.id === s.counselor_id)
+        const cu = c && byId(c.profile_id)
+        const docs = db.documents.filter((d) => d.student_id === s.id)
+        const apps = db.applications.filter((a) => a.student_id === s.id)
+        return {
+          id: s.id,
+          student_id: s.id,
+          student_number: s.student_number,
+          profile_id: p.id,
+          first_name: p.first,
+          last_name: p.last,
+          email: p.email,
+          phone: p.phone ?? null,
+          country: sp?.country ?? p.country ?? null,
+          nationality: sp?.nationality ?? null,
+          is_active: p.active,
+          last_seen_at: p.lastSeen ?? null,
+          counselor_id: s.counselor_id,
+          counselor_name: cu ? `${cu.first} ${cu.last}` : null,
+          journey_stage: 'upload_documents',
+          onboarding_completed: s.onboarding_completed,
+          created_at: s.created_at,
+          active_applications: apps.length,
+          documents_pending: docs.filter((d) => ['uploaded', 'under_review'].includes(d.status)).length,
+          documents_action: docs.filter((d) =>
+            ['rejected', 'resubmission_required', 'expired'].includes(d.status),
+          ).length,
+          latest_application_status: apps[0]?.status ?? null,
+        }
+      }),
+  }
+  const counselorDirectory = () =>
+    [...users.values()]
+      .filter((u) => u.role === 'counselor' && u.active)
+      .map((u) => ({
+        staff_id: `staff-${u.id}`,
+        profile_id: u.id,
+        first_name: u.first,
+        last_name: u.last,
+        email: u.email,
+        assigned_students: db.students.filter((s) => s.counselor_id === `staff-${u.id}`).length,
+      }))
+  const auditRows = () =>
+    audit.map((a, i) => ({
+      id: `audit-${i}`,
+      action: a.action,
+      entity_type: a.entityType ?? (a.documentId ? 'document' : null),
+      entity_id: a.entityId ?? a.documentId ?? null,
+      student_id: a.studentId ?? docOf(a.documentId)?.student_id ?? null,
+      actor_id: users.get(a.actor)?.id ?? null,
+      actor_role: users.get(a.actor)?.role ?? null,
+      metadata: a.metadata ?? (a.version ? { version: a.version } : {}),
+      ip_address: null,
+      user_agent: null,
+      created_at: a.at,
+    }))
+  const isStaffRole = (r) => r !== 'student'
+  const isAdminRole = (r) => r === 'admin' || r === 'super_admin'
+  const nameOf = (u) => `${u.first} ${u.last}`
+  const counselorProfileOf = (studentId) => {
+    const s = db.students.find((x) => x.id === studentId)
+    const c = s && db.staff.find((x) => x.id === s.counselor_id)
+    return c ? byId(c.profile_id) : null
+  }
+  const typeName = (d) =>
+    d.custom_type_name ?? db.document_types.find((t) => t.id === d.document_type_id)?.name
+  const notifyCounselorOfUpload = (me, d, replaced) => {
+    if (me.role !== 'student') return
+    const c = counselorProfileOf(d.student_id)
+    if (c)
+      notify(
+        c.id,
+        'document_uploaded',
+        `${replaced ? 'Updated' : 'New'} document from ${nameOf(me)}`,
+        `${typeName(d)}${replaced ? ` (version ${d.version})` : ''} is ready for review.`,
+        `/admin/documents/${d.id}`,
+      )
   }
 
-  function profileCompletion(me) {
-    const s = studentOf(me)
+  function profileCompletion(s) {
+    const me = byId(s.profile_id)
     const d = db.student_profiles.find((p) => p.student_id === s.id) ?? {}
     const has = (v) => v !== null && v !== undefined && String(v).trim() !== ''
     const items = [
@@ -499,6 +641,9 @@ export function createMock() {
         out.program = db.programs.find((p) => p.id === r.program_id) ?? null
       }
       if (table === 'courses') out.enrollments = [{ count: r.enrolled ?? 0 }]
+      if (table === 'enrollments')
+        out.course = { title: COURSES.find((c) => c.id === r.course_id)?.title ?? 'Course' }
+      if (table === 'message_threads') out.messages = [{ count: 0 }]
       return out
     })
   }
@@ -534,35 +679,6 @@ export function createMock() {
       'students.view_all',
     ],
   }
-  const NOTIFICATIONS = [
-    {
-      id: '1',
-      type: 'document_rejected',
-      title: 'Bank Statement needs resubmission',
-      body: 'The statement is older than 31 days.',
-      link: '/app/documents',
-      is_read: false,
-      created_at: daysAgo(1),
-    },
-    {
-      id: '2',
-      type: 'university_offer',
-      title: 'New offer from Westmere University',
-      body: 'You received a conditional offer.',
-      link: '/app/applications',
-      is_read: false,
-      created_at: daysAgo(2),
-    },
-    {
-      id: '3',
-      type: 'document_approved',
-      title: 'Passport approved',
-      body: null,
-      link: '/app/documents',
-      is_read: true,
-      created_at: daysAgo(9),
-    },
-  ]
   const fail = (code, message, status = 400) => ({
     status,
     body: { code, message, details: null, hint: null },
@@ -570,8 +686,226 @@ export function createMock() {
 
   // ------------------------------------------------------------------ RPCs (imitate the database functions)
   const rpcs = {
+    review_document: (me, a) => {
+      const d = docOf(a.p_document_id)
+      const perms = PERMS[me.role] ?? []
+      if (
+        !d ||
+        !(perms.includes('documents.review') || me.role === 'super_admin') ||
+        !canAccessStudent(me, d.student_id)
+      )
+        return fail('42501', 'Not allowed to review this document', 403)
+      const needsReason = ['rejected', 'resubmission_required'].includes(a.p_action)
+      if (needsReason && !String(a.p_reason ?? '').trim()) return fail('22023', 'A reason is required')
+      Object.assign(d, {
+        status: a.p_action,
+        reviewer_id: me.id,
+        reviewed_at: now(),
+        reviewer_comment: a.p_comment?.trim() || null,
+        rejection_reason: needsReason ? a.p_reason.trim() : null,
+        required_action: needsReason
+          ? a.p_required_action?.trim() || 'Upload a corrected replacement document'
+          : null,
+        verified_at: a.p_action === 'approved' ? now() : null,
+      })
+      db.document_reviews.push({
+        id: randomUUID(),
+        document_id: d.id,
+        version: d.version,
+        reviewer_id: me.id,
+        action: a.p_action,
+        reason: a.p_reason?.trim() || null,
+        comment: a.p_comment?.trim() || null,
+        created_at: now(),
+      })
+      audit.push({
+        at: now(),
+        action: `document.${a.p_action}`,
+        documentId: d.id,
+        actor: me.email,
+        metadata: { reason: a.p_reason ?? null, version: d.version },
+      })
+      const studentProfile = db.students.find((x) => x.id === d.student_id).profile_id
+      if (a.p_action === 'approved')
+        notify(
+          studentProfile,
+          'document_approved',
+          `${typeName(d)} approved`,
+          `Your ${typeName(d)} has been verified.`,
+          `/documents?doc=${d.id}`,
+        )
+      else if (needsReason)
+        notify(
+          studentProfile,
+          'document_rejected',
+          `${typeName(d)}${a.p_action === 'rejected' ? ' rejected' : ' needs resubmission'}`,
+          a.p_reason,
+          `/documents?doc=${d.id}`,
+        )
+      return { status: 200, body: d }
+    },
+    request_document: (me, a) => {
+      if (!isStaffRole(me.role) || !canAccessStudent(me, a.p_student_id))
+        return fail('42501', 'Not allowed', 403)
+      const t = db.document_types.find((x) => x.id === a.p_document_type_id)
+      const sp = db.students.find((x) => x.id === a.p_student_id).profile_id
+      notify(
+        sp,
+        'document_required',
+        `New document required: ${t.name}`,
+        a.p_message ?? `Please upload your ${t.name}.`,
+        '/documents',
+      )
+      audit.push({
+        at: now(),
+        action: 'document.requested',
+        entityId: t.id,
+        entityType: 'document_type',
+        studentId: a.p_student_id,
+        actor: me.email,
+      })
+      return { status: 204 }
+    },
+    assign_counselor: (me, a) => {
+      if (!isAdminRole(me.role)) return fail('42501', 'Only an administrator can assign counselors', 403)
+      const s = db.students.find((x) => x.id === a.p_student_id)
+      if (!s) return fail('22023', 'Student not found')
+      const c = a.p_staff_id && counselorDirectory().find((x) => x.staff_id === a.p_staff_id)
+      if (a.p_staff_id && !c) return fail('22023', 'Choose an active counselor')
+      if (s.counselor_id === a.p_staff_id) return { status: 204 }
+      audit.push({
+        at: now(),
+        action: 'student.counselor_assigned',
+        entityType: 'student',
+        entityId: s.id,
+        studentId: s.id,
+        actor: me.email,
+        metadata: { from: s.counselor_id, to: a.p_staff_id },
+      })
+      s.counselor_id = a.p_staff_id
+      if (c) {
+        const su = byId(s.profile_id)
+        notify(
+          c.profile_id,
+          'counselor_assigned',
+          `New student assigned: ${nameOf(su)}`,
+          `You are now the counselor for ${nameOf(su)}.`,
+          `/admin/students/${s.id}`,
+        )
+        notify(
+          su.id,
+          'counselor_assigned',
+          'Your counselor has been assigned',
+          `${c.first_name} ${c.last_name} will guide your applications.`,
+          '/app/messages',
+        )
+      }
+      return { status: 204 }
+    },
+    admin_dashboard_metrics: (me) => {
+      if (!(isAdminRole(me.role) || me.role === 'counselor')) return fail('42501', 'Not allowed', 403)
+      const vis = db.students.filter((s) => canAccessStudent(me, s.id))
+      const ids = new Set(vis.map((s) => s.id))
+      const apps = db.applications.filter((a) => ids.has(a.student_id))
+      const docs = db.documents.filter((d) => ids.has(d.student_id))
+      const count = (rows, key) =>
+        Object.entries(rows.reduce((m, r) => ((m[r[key]] = (m[r[key]] ?? 0) + 1), m), {})).map(([k, n]) => ({
+          [key]: k,
+          count: n,
+        }))
+      const months = Array.from({ length: 12 }, (_, i) => {
+        const d = new Date()
+        d.setUTCDate(1)
+        d.setUTCMonth(d.getUTCMonth() - 11 + i)
+        return d.toISOString().slice(0, 7)
+      })
+      const pending = docs.filter((d) => ['uploaded', 'under_review'].includes(d.status))
+      return {
+        status: 200,
+        body: {
+          scope: isAdminRole(me.role) ? 'all' : 'assigned',
+          total_students: vis.length,
+          active_students: vis.filter(
+            (s) => byId(s.profile_id).active && byId(s.profile_id).lastSeen >= daysAgo(30),
+          ).length,
+          new_applications: apps.filter((a) => a.created_at >= daysAgo(30)).length,
+          applications_pending: apps.filter((a) =>
+            ['application_started', 'documents_required', 'submitted', 'under_university_review'].includes(
+              a.status,
+            ),
+          ).length,
+          documents_pending: pending.length,
+          offers_received: 0,
+          visa_applications: 0,
+          course_enrollments: db.enrollments.filter((e) => ids.has(e.student_id)).length,
+          payments_30d: [{ currency: 'GBP', amount: 1250 }],
+          outstanding: [{ currency: 'GBP', amount: 9000 }],
+          applications_by_status: count(apps, 'status'),
+          students_by_country: count(
+            vis.map((s) => ({ country: byId(s.profile_id).country ?? 'Unknown' })),
+            'country',
+          ),
+          documents_awaiting: count(pending, 'category'),
+          monthly_applications: months.map((m) => ({
+            month: m,
+            count: apps.filter((a) => a.created_at.startsWith(m)).length,
+          })),
+          revenue_by_month: months.map((m, i) => ({ month: m, amounts: i === 11 ? { GBP: 1250 } : {} })),
+          course_engagement: [
+            { course: 'IELTS Academic Complete', enrollments: 1, avg_progress: 40, completed: 0 },
+          ],
+        },
+      }
+    },
+    counselor_dashboard: (me) => {
+      if (me.role !== 'counselor' || !me.active) return fail('42501', 'Not allowed', 403)
+      const mine = db.students.filter((s) => s.counselor_id === `staff-${me.id}`)
+      const ids = new Set(mine.map((s) => s.id))
+      const sname = (sid) => nameOf(byId(db.students.find((s) => s.id === sid).profile_id))
+      const pending = db.documents
+        .filter((d) => ids.has(d.student_id) && ['uploaded', 'under_review'].includes(d.status))
+        .sort((a, b) => a.uploaded_at.localeCompare(b.uploaded_at))
+      return {
+        status: 200,
+        body: {
+          assigned_students: mine.length,
+          pending_documents: pending.slice(0, 10).map((d) => ({
+            id: d.id,
+            uploaded_at: d.uploaded_at,
+            status: d.status,
+            version: d.version,
+            type_name: typeName(d),
+            student_name: sname(d.student_id),
+            student_id: d.student_id,
+          })),
+          pending_documents_total: pending.length,
+          upcoming_deadlines: [],
+          attention: db.applications
+            .filter((a) => ids.has(a.student_id) && a.status === 'documents_required')
+            .map((a) => ({
+              id: a.id,
+              reference: a.reference,
+              status: a.status,
+              updated_at: a.created_at,
+              university: db.universities.find((x) => x.id === a.university_id).name,
+              student_name: sname(a.student_id),
+              student_id: a.student_id,
+              documents_action: db.documents.filter(
+                (d) =>
+                  d.student_id === a.student_id && ['rejected', 'resubmission_required'].includes(d.status),
+              ).length,
+              reason: 'Documents required',
+            })),
+          unread_messages: 0,
+        },
+      }
+    },
     log_client_event: () => ({ status: 204 }),
-    profile_completion: (me) => ({ status: 200, body: profileCompletion(me) }),
+    profile_completion: (me, a) => {
+      const s = a.p_student_id ? db.students.find((x) => x.id === a.p_student_id) : studentOf(me)
+      if (!s || !canAccessStudent(me, s.id)) return fail('42501', 'Not allowed', 403)
+      return { status: 200, body: profileCompletion(s) }
+    },
     save_onboarding_progress: (me, a) => {
       const s = studentOf(me)
       s.onboarding_step = Math.max(s.onboarding_step, a.p_step)
@@ -587,6 +921,7 @@ export function createMock() {
       if (!v) return fail('22023', 'Version not found')
       grants.push({ profileId: me.id, path: v.file_path, expires: Date.now() + 120_000 })
       audit.push({
+        at: now(),
         action: a.p_purpose === 'download' ? 'document.downloaded' : 'document.viewed',
         documentId: d.id,
         actor: me.email,
@@ -631,7 +966,14 @@ export function createMock() {
         uploaded_by: me.id,
         created_at: now(),
       })
-      audit.push({ action: 'document.replaced', documentId: d.id, actor: me.email, version: d.version })
+      audit.push({
+        at: now(),
+        action: 'document.replaced',
+        documentId: d.id,
+        actor: me.email,
+        version: d.version,
+      })
+      notifyCounselorOfUpload(me, d, true)
       return { status: 200, body: d }
     },
     delete_document: (me, a) => {
@@ -646,7 +988,7 @@ export function createMock() {
       const paths = db.document_versions.filter((v) => v.document_id === d.id).map((v) => v.file_path)
       db.documents = db.documents.filter((x) => x.id !== d.id)
       db.document_versions = db.document_versions.filter((v) => v.document_id !== d.id)
-      audit.push({ action: 'document.deleted', documentId: d.id, actor: me.email })
+      audit.push({ at: now(), action: 'document.deleted', documentId: d.id, actor: me.email })
       return { status: 200, body: paths }
     },
   }
@@ -806,6 +1148,43 @@ export function createMock() {
       }
     }
 
+    // ---------------- edge function (mirrors supabase/functions/admin-create-user/handler.ts)
+    if (u.pathname === '/functions/v1/admin-create-user') {
+      if (!me) return send(401, { error: 'Sign in again to continue.' })
+      if (!me.active) return send(403, { error: 'Your account is inactive.' })
+      const role = json.role ?? 'student'
+      if (role === 'student' ? !isAdminRole(me.role) : me.role !== 'super_admin')
+        return send(403, {
+          error:
+            role === 'student'
+              ? "You don't have permission to add students."
+              : 'Only a super admin can create staff accounts.',
+        })
+      const email = String(json.email ?? '').toLowerCase()
+      if (users.has(email)) return send(409, { error: 'An account with this email already exists.' })
+      const nu = addUser(email, role, json.first_name, json.last_name, {
+        phone: json.phone,
+        country: json.country,
+        lastSeen: null,
+      })
+      if (role === 'student')
+        addStudent(nu, `STU-${1100 + db.students.length}`, null, {
+          onboarding_step: 1,
+          onboarding_completed: false,
+        })
+      else db.staff.push({ id: `staff-${nu.id}`, profile_id: nu.id })
+      audit.push({
+        at: now(),
+        action: 'user.created',
+        entityType: 'profile',
+        entityId: nu.id,
+        studentId: studentOf(nu)?.id,
+        actor: me.email,
+        metadata: { role },
+      })
+      return send(201, { user_id: nu.id, role, invited: json.send_invite !== false })
+    }
+
     // ---------------- rest
     const m = u.pathname.match(/^\/rest\/v1\/(rpc\/)?([a-z_]+)$/)
     if (!m) return send(404, { message: 'not found' })
@@ -837,8 +1216,13 @@ export function createMock() {
     if (name === 'user_roles') return reply([{ role: me.role }])
     if (name === 'role_permissions')
       return reply((PERMS[me.role] ?? []).map((permission) => ({ permission })))
-    if (name === 'notifications')
-      return reply(me.email === 'student@demo.portal' ? applyFilters(NOTIFICATIONS, u.searchParams) : [])
+    if (name === 'audit_logs')
+      return reply(
+        PERMS[me.role]?.includes('audit.view') || me.role === 'super_admin'
+          ? applyFilters(auditRows(), u.searchParams)
+          : [],
+      )
+    if (name === 'counselor_directory') return reply(me.role === 'student' ? [] : counselorDirectory())
     if (name === 'my_threads') return reply(me.email === 'student@demo.portal' ? [{ unread_count: 1 }] : [])
     if (name === 'courses') return reply(me.role === 'instructor' ? embed('courses', COURSES, select) : [])
     if (viewRows[name])
@@ -917,7 +1301,8 @@ export function createMock() {
             uploaded_by: me.id,
             created_at: now(),
           })
-          audit.push({ action: 'document.uploaded', documentId: r.id, actor: me.email })
+          audit.push({ at: now(), action: 'document.uploaded', documentId: r.id, actor: me.email })
+          setTimeout(() => notifyCounselorOfUpload(me, r, false))
         }
         const existing = upsert && rows.find((x) => conflict.every((c) => String(x[c]) === String(r[c])))
         if (existing) {
@@ -937,6 +1322,22 @@ export function createMock() {
         rows.filter((r) => isVisible(name, me, r) && writable(r)),
         u.searchParams,
       )
+      if (name === 'profiles' && 'is_active' in json) {
+        for (const t of targets) {
+          const target = byId(t.id)
+          if (t.id === me.id || (target.role !== 'student' && me.role !== 'super_admin'))
+            return send(400, { code: '42501', message: 'Not allowed to change account status' })
+          target.active = json.is_active
+          audit.push({
+            at: now(),
+            action: json.is_active ? 'profile.reactivated' : 'profile.deactivated',
+            entityType: 'profile',
+            entityId: t.id,
+            studentId: studentOf(target)?.id,
+            actor: me.email,
+          })
+        }
+      }
       if (name === 'profiles')
         targets.forEach((t) => {
           const user = byId(t.id)

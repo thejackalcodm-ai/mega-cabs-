@@ -27,7 +27,9 @@ describe('admin-create-user handler', () => {
     const d = deps(admin)
     const res = await handleCreateUser(body, d)
     expect(res).toEqual({ status: 201, body: { user_id: 'new-user', role: 'student', invited: true } })
-    expect(d.createUser).toHaveBeenCalledWith(expect.objectContaining({ email: 'new.student@example.com', role: 'student' }))
+    expect(d.createUser).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'new.student@example.com', role: 'student' }),
+    )
     expect(d.logCreated).toHaveBeenCalledWith('new-user', 'student')
     expect(d.sendInvite).toHaveBeenCalledWith('new.student@example.com')
   })
@@ -53,12 +55,20 @@ describe('admin-create-user handler', () => {
     const d = deps(admin)
     const res = await handleCreateUser({ email: 'nope', first_name: '<b>', last_name: '', role: 'root' }, d)
     expect(res.status).toBe(400)
-    expect(Object.keys(res.body.fields as object).sort()).toEqual(['email', 'first_name', 'last_name', 'role'])
+    expect(Object.keys(res.body.fields as object).sort()).toEqual([
+      'email',
+      'first_name',
+      'last_name',
+      'role',
+    ])
     expect(d.createUser).not.toHaveBeenCalled()
   })
 
   it('maps duplicate emails to 409', async () => {
-    const res = await handleCreateUser(body, deps(admin, { createUser: vi.fn(async () => ({ error: 'exists' as const })) }))
+    const res = await handleCreateUser(
+      body,
+      deps(admin, { createUser: vi.fn(async () => ({ error: 'exists' as const })) }),
+    )
     expect(res.status).toBe(409)
   })
 
@@ -71,7 +81,10 @@ describe('admin-create-user handler', () => {
   })
 
   it('still succeeds (invited: false) when the email cannot be sent', async () => {
-    const res = await handleCreateUser({ ...body, send_invite: true }, deps(admin, { sendInvite: vi.fn(async () => Promise.reject(new Error('smtp'))) }))
+    const res = await handleCreateUser(
+      { ...body, send_invite: true },
+      deps(admin, { sendInvite: vi.fn(async () => Promise.reject(new Error('smtp'))) }),
+    )
     expect(res).toMatchObject({ status: 201, body: { invited: false } })
   })
 

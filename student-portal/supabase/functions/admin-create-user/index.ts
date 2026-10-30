@@ -4,7 +4,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
 import { handleCreateUser, type Caller, type NewUser } from './handler.ts'
 
-declare const Deno: { env: { get(name: string): string | undefined }; serve(handler: (req: Request) => Response | Promise<Response>): void }
+declare const Deno: {
+  env: { get(name: string): string | undefined }
+  serve(handler: (req: Request) => Response | Promise<Response>): void
+}
 
 const url = Deno.env.get('SUPABASE_URL')!
 // Works with legacy JWT keys and the newer sb_publishable_ / sb_secret_ keys.
@@ -21,15 +24,22 @@ const cors = {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
-  if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: cors })
+  if (req.method !== 'POST')
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: cors })
 
   // The caller is authenticated here (auth.getUser in getCaller), not by the gateway; see config.toml.
   const authorization = req.headers.get('Authorization') ?? ''
   if (!/^Bearer\s+\S+/.test(authorization)) {
-    return new Response(JSON.stringify({ error: 'Sign in again to continue.' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ error: 'Sign in again to continue.' }), {
+      status: 401,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
   }
   // Caller-scoped client: every query runs under the caller's RLS.
-  const asCaller = createClient(url, anonKey, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } })
+  const asCaller = createClient(url, anonKey, {
+    global: { headers: { Authorization: authorization } },
+    auth: { persistSession: false },
+  })
   // Service-role client: used only for auth.admin calls below. Never returned to the browser.
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
 
@@ -43,7 +53,12 @@ Deno.serve(async (req) => {
         asCaller.rpc('has_permission', { perm: 'students.manage' }),
         asCaller.rpc('is_super_admin'),
       ])
-      return { id: data.user.id, active: !!profile.data?.is_active, canManageStudents: manage.data === true, isSuperAdmin: superAdmin.data === true }
+      return {
+        id: data.user.id,
+        active: !!profile.data?.is_active,
+        canManageStudents: manage.data === true,
+        isSuperAdmin: superAdmin.data === true,
+      }
     },
     async createUser(u: NewUser) {
       const { data, error } = await admin.auth.admin.createUser({
@@ -52,11 +67,17 @@ Deno.serve(async (req) => {
         app_metadata: { role: u.role },
         user_metadata: { first_name: u.firstName, last_name: u.lastName, phone: u.phone, country: u.country },
       })
-      if (error) return { error: /already|exists|registered/i.test(error.message) ? 'exists' : 'failed', message: error.message }
+      if (error)
+        return {
+          error: /already|exists|registered/i.test(error.message) ? 'exists' : 'failed',
+          message: error.message,
+        }
       return { id: data.user.id }
     },
     async sendInvite(email: string) {
-      const { error } = await asCaller.auth.resetPasswordForEmail(email, { redirectTo: appUrl ? `${appUrl}/reset-password` : undefined })
+      const { error } = await asCaller.auth.resetPasswordForEmail(email, {
+        redirectTo: appUrl ? `${appUrl}/reset-password` : undefined,
+      })
       if (error) throw error
     },
     async logCreated(userId, role) {
@@ -67,5 +88,8 @@ Deno.serve(async (req) => {
       await admin.auth.admin.deleteUser(userId)
     },
   })
-  return new Response(JSON.stringify(result.body), { status: result.status, headers: { ...cors, 'Content-Type': 'application/json' } })
+  return new Response(JSON.stringify(result.body), {
+    status: result.status,
+    headers: { ...cors, 'Content-Type': 'application/json' },
+  })
 })
